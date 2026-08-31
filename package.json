@@ -1,0 +1,26 @@
+{
+  "name": "pelsung-finance",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pelsung Accounting Management System \u2014 API and workspace",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "setup": "npm --prefix backend install && npm --prefix frontend install",
+    "db:migrate": "npm --prefix backend run db:migrate",
+    "db:seed": "npm --prefix backend run db:seed",
+    "db:setup": "npm --prefix backend run db:setup",
+    "db:import": "npm --prefix backend run db:import --",
+    "set-password": "npm --prefix backend run set-password --",
+    "test-email": "npm --prefix backend run test-email --",
+    "dev:api": "npm --prefix backend run dev",
+    "dev:web": "npm --prefix frontend run dev",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "start:api": "npm --prefix backend start",
+    "start:web": "npm --prefix frontend start",
+    "test": "npm --prefix backend test",
+    "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend run typecheck",
+    "lint": "npm --prefix backend run lint && npm --prefix frontend run lint"
+  }
+}
