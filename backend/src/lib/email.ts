@@ -210,6 +210,66 @@ async function sendViaResend(message: Message): Promise<string> {
   return result.id;
 }
 
+/* ------------------------------------------------------------- AgentMail */
+
+// An HTTPS API, so it works on hosts that block outbound SMTP (Render's free
+// plan among them), and it delivers to any recipient — no per-domain
+// verification like Resend's shared sender. Mail is sent *from* an inbox, so
+// the configuration is an API key plus the inbox id; the from-address is the
+// inbox's own address and is not set per message.
+const AGENTMAIL_BASE = (process.env.AGENTMAIL_BASE_URL?.trim() || "https://api.agentmail.to/v0").replace(/\/+$/, "");
+
+type AgentMailResponse = { message_id?: string; thread_id?: string; error?: string; message?: string };
+
+async function sendViaAgentMail(message: Message): Promise<string> {
+  const apiKey = env.AGENTMAIL_API_KEY!.trim();
+  const inboxId = env.AGENTMAIL_INBOX_ID!.trim();
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  let response: Response;
+  try {
+    response = await fetch(`${AGENTMAIL_BASE}/inboxes/${encodeURIComponent(inboxId)}/messages/send`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": message.idempotencyKey,
+        "User-Agent": "Pelsung-Finance/1.0",
+      },
+      body: JSON.stringify({ to: message.to, subject: message.subject, text: message.text, html: message.html }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    logger.error({ err: error }, "AgentMail request failed");
+    throw new EmailDeliveryError("The email provider (AgentMail) could not be reached. Check the network settings and retry.");
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const result = (await response.json().catch(() => ({}))) as AgentMailResponse;
+  if (!response.ok || !result.message_id) throw describeAgentMailFailure(response.status, result);
+  logger.info({ to: message.to, id: result.message_id }, "Email sent via AgentMail");
+  return result.message_id;
+}
+
+function describeAgentMailFailure(status: number, result: AgentMailResponse): EmailDeliveryError {
+  const detail = result.error ?? result.message ?? "";
+  if (status === 401 || status === 403) {
+    return new EmailDeliveryError(
+      "AgentMail rejected the API key. Check AGENTMAIL_API_KEY, then retry the invitation.",
+      "invalid_api_key",
+    );
+  }
+  if (status === 404) {
+    return new EmailDeliveryError(
+      "AgentMail could not find that inbox. Check AGENTMAIL_INBOX_ID matches an inbox in your AgentMail dashboard.",
+      "sender_not_verified",
+    );
+  }
+  return new EmailDeliveryError(`AgentMail could not deliver the message${detail ? `: ${detail}` : "."}`);
+}
+
 /**
  * Sends one message through whichever transport is configured.
  *
@@ -219,7 +279,14 @@ async function sendViaResend(message: Message): Promise<string> {
  */
 async function deliver(message: Message): Promise<string> {
   requireConfigured();
-  return env.emailTransport === "smtp" ? sendViaSmtp(message) : sendViaResend(message);
+  switch (env.emailTransport) {
+    case "agentmail":
+      return sendViaAgentMail(message);
+    case "smtp":
+      return sendViaSmtp(message);
+    default:
+      return sendViaResend(message);
+  }
 }
 
 /** Verifies the transport can connect and authenticate, without sending. */

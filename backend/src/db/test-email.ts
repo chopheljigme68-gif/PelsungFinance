@@ -23,14 +23,19 @@ async function main(): Promise<void> {
   if (env.emailTransport === "none") {
     console.error("Email is not configured.\n");
     console.error("Set ONE of these groups in backend/.env, then run this again:\n");
-    console.error("  SMTP   — SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM_EMAIL");
-    console.error("  Resend — RESEND_API_KEY, RESEND_FROM_EMAIL");
+    console.error("  AgentMail — AGENTMAIL_API_KEY, AGENTMAIL_INBOX_ID");
+    console.error("  SMTP      — SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM_EMAIL");
+    console.error("  Resend    — RESEND_API_KEY, RESEND_FROM_EMAIL");
     process.exitCode = 1;
     return;
   }
 
   console.log(`Transport : ${env.emailTransport}`);
-  console.log(`From      : ${env.emailFrom}`);
+  if (env.emailTransport === "agentmail") {
+    console.log(`Inbox     : ${env.AGENTMAIL_INBOX_ID}`);
+  } else {
+    console.log(`From      : ${env.emailFrom}`);
+  }
   if (env.emailTransport === "smtp") {
     console.log(`Server    : ${env.SMTP_HOST}:${env.SMTP_PORT} (${env.SMTP_SECURE || env.SMTP_PORT === 465 ? "TLS" : "STARTTLS"})`);
   }

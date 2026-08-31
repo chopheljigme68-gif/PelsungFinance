@@ -32,6 +32,12 @@ const envSchema = z.object({
 
   // Email — configure exactly one transport.
   //
+  // AgentMail: an HTTP API that sends from an inbox. Works on hosts that block
+  // SMTP (Render's free plan) and delivers to any recipient with no per-domain
+  // verification. Mail goes out from the inbox's own address.
+  AGENTMAIL_API_KEY: z.string().optional(),
+  AGENTMAIL_INBOX_ID: z.string().optional(),
+
   // Resend: an HTTP API. Simple, but until a domain is verified its shared
   // sender only reaches the address that owns the Resend account.
   RESEND_API_KEY: z.string().optional(),
@@ -74,12 +80,20 @@ if (!parsed.success) {
 const raw = parsed.data;
 
 /**
- * SMTP wins when it is configured, because an operator who filled in a mail
- * server meant to use it. Resend is the fallback.
+ * Which email transport to use. If more than one is configured the order here
+ * decides: AgentMail first (it works on hosts that block SMTP and needs no
+ * domain verification), then SMTP, then Resend.
  */
+const agentmailConfigured = Boolean(raw.AGENTMAIL_API_KEY?.trim() && raw.AGENTMAIL_INBOX_ID?.trim());
 const smtpConfigured = Boolean(raw.SMTP_HOST?.trim() && (raw.SMTP_FROM_EMAIL?.trim() || raw.SMTP_USER?.trim()));
 const resendConfigured = Boolean(raw.RESEND_API_KEY?.trim() && raw.RESEND_FROM_EMAIL?.trim());
-const emailTransport: "smtp" | "resend" | "none" = smtpConfigured ? "smtp" : resendConfigured ? "resend" : "none";
+const emailTransport: "agentmail" | "smtp" | "resend" | "none" = agentmailConfigured
+  ? "agentmail"
+  : smtpConfigured
+    ? "smtp"
+    : resendConfigured
+      ? "resend"
+      : "none";
 
 /**
  * Normalises each allowed origin to what a browser actually sends in the
@@ -114,9 +128,14 @@ export const env = {
   ],
   sessionTtlSeconds: Math.round(raw.SESSION_TTL_HOURS * 60 * 60),
   emailTransport,
-  emailFrom: smtpConfigured
-    ? (raw.SMTP_FROM_EMAIL?.trim() || raw.SMTP_USER!.trim())
-    : (raw.RESEND_FROM_EMAIL?.trim() ?? ""),
+  // The sender address. AgentMail uses the inbox's own address, so it is set by
+  // the provider, not here.
+  emailFrom:
+    emailTransport === "smtp"
+      ? (raw.SMTP_FROM_EMAIL?.trim() || raw.SMTP_USER!.trim())
+      : emailTransport === "resend"
+        ? (raw.RESEND_FROM_EMAIL?.trim() ?? "")
+        : "",
   emailEnabled: emailTransport !== "none",
 } as const;
 
