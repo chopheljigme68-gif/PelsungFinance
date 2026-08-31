@@ -36,7 +36,18 @@ export function createApp(): Express {
       origin(origin, callback) {
         // Same-origin and non-browser clients send no Origin header.
         if (!origin || env.corsOrigins.includes(origin)) return callback(null, true);
-        callback(new Error("This origin is not allowed to call the Pelsung Finance API."));
+
+        // Refuse by withholding the headers, never by throwing. Throwing here
+        // sends the request to the error handler, so the browser sees an
+        // unexplained 500 and the log records a server fault rather than the
+        // configuration mistake this actually is. Say plainly what was
+        // rejected and what would have been accepted — this line is the whole
+        // diagnosis when a deployment cannot talk to its API.
+        logger.warn(
+          { origin, allowed: env.corsOrigins },
+          "Refused a cross-origin request: this origin is not in CORS_ORIGINS",
+        );
+        callback(null, false);
       },
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

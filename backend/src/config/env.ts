@@ -81,13 +81,37 @@ const smtpConfigured = Boolean(raw.SMTP_HOST?.trim() && (raw.SMTP_FROM_EMAIL?.tr
 const resendConfigured = Boolean(raw.RESEND_API_KEY?.trim() && raw.RESEND_FROM_EMAIL?.trim());
 const emailTransport: "smtp" | "resend" | "none" = smtpConfigured ? "smtp" : resendConfigured ? "resend" : "none";
 
+/**
+ * Normalises each allowed origin to what a browser actually sends in the
+ * `Origin` header: scheme + host + optional port, nothing else.
+ *
+ * A value pasted into a hosting dashboard routinely arrives as
+ * `https://app.example.com/` or with a stray path or space. None of those ever
+ * match, and the resulting failure — a preflight with no
+ * Access-Control-Allow-Origin — gives no hint as to why, so tidy it here
+ * rather than making an operator find a trailing slash by eye.
+ */
+function normalizeOrigin(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    return new URL(trimmed).origin; // drops the path, trailing slash and case
+  } catch {
+    return trimmed.replace(/\/+$/, "");
+  }
+}
+
 export const env = {
   ...raw,
   isProduction: raw.NODE_ENV === "production",
   isTest: raw.NODE_ENV === "test",
-  corsOrigins: raw.CORS_ORIGINS.split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+  corsOrigins: [
+    ...new Set(
+      raw.CORS_ORIGINS.split(",")
+        .map(normalizeOrigin)
+        .filter((origin): origin is string => Boolean(origin)),
+    ),
+  ],
   sessionTtlSeconds: Math.round(raw.SESSION_TTL_HOURS * 60 * 60),
   emailTransport,
   emailFrom: smtpConfigured
