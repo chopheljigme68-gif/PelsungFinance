@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { env } from "../config/env.js";
 import { checkDatabase } from "../db/client.js";
 import { asyncHandler } from "../lib/http.js";
 import { requireAuth, requireTransactionalUser } from "../middleware/auth.js";
@@ -19,6 +20,10 @@ apiRouter.get(
     res.status(database ? 200 : 503).json({
       status: database ? "ok" : "degraded",
       database: database ? "connected" : "unavailable",
+      // Echoed so a CORS failure can be diagnosed without shell access: compare
+      // this list against the exact origin the browser reports. These are
+      // public URLs, so publishing them reveals nothing a visitor cannot see.
+      corsOrigins: env.corsOrigins,
       time: new Date().toISOString(),
     });
   }),

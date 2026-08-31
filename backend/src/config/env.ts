@@ -11,7 +11,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
 
-  DATABASE_URL: z.string().min(1, "DATABASE_URL is required — copy the Supabase connection string into .env"),
+  DATABASE_URL: z.string().min(1, "the Supabase connection string (Settings → Database → Connection string → URI)"),
   DATABASE_SSL: booleanish(true),
   DATABASE_POOL_MAX: z.coerce.number().int().positive().max(50).default(10),
 
@@ -57,9 +57,17 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  const issues = parsed.error.issues.map((issue) => `  • ${issue.path.join(".")}: ${issue.message}`).join("\n");
+  const issues = parsed.error.issues.map((issue) => `  • ${issue.path.join(".")} — ${issue.message}`).join("\n");
+  // On a host there is no .env file to fix; the values come from the
+  // platform's own settings, so say that rather than sending the reader to a
+  // file that does not exist in the container.
+  const where = process.env.RENDER
+    ? "Set these in Render → your service → Environment, then redeploy."
+    : process.env.VERCEL || process.env.RAILWAY_ENVIRONMENT || process.env.FLY_APP_NAME
+      ? "Set these in your hosting platform's environment settings, then redeploy."
+      : "Copy .env.example to .env and complete it.";
   // eslint-disable-next-line no-console
-  console.error(`\nInvalid environment configuration:\n${issues}\n\nCopy .env.example to .env and complete it.\n`);
+  console.error(`\nThe API cannot start — these settings are missing or invalid:\n${issues}\n\n${where}\n`);
   process.exit(1);
 }
 
