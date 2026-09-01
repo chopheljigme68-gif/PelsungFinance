@@ -20,7 +20,8 @@
     "db:setup": "npm run db:migrate && npm run db:seed",
     "db:import": "tsx src/db/import-d1.ts",
     "set-password": "tsx src/db/set-password.ts",
-    "test-email": "tsx src/db/test-email.ts"
+    "test-email": "tsx src/db/test-email.ts",
+    "agentmail-inbox": "tsx src/db/agentmail-inbox.ts"
   },
   "dependencies": {
     "@types/compression": "^1.7.5",

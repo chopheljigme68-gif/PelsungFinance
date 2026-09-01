@@ -35,7 +35,7 @@ userRouter.post(
   "/",
   validateBody(userSchema),
   asyncHandler(async (req, res) => {
-    const { actionNotice } = await createUser(currentUser(req), req.body, loginUrl());
+    const { actionNotice } = await createUser(currentUser(req), req.body);
     await respondWithSnapshot(req, res, { actionNotice }, 201);
   }),
 );

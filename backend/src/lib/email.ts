@@ -217,40 +217,132 @@ async function sendViaResend(message: Message): Promise<string> {
 // verification like Resend's shared sender. Mail is sent *from* an inbox, so
 // the configuration is an API key plus the inbox id; the from-address is the
 // inbox's own address and is not set per message.
-const AGENTMAIL_BASE = (process.env.AGENTMAIL_BASE_URL?.trim() || "https://api.agentmail.to/v0").replace(/\/+$/, "");
+//
+// AgentMail's own docs disagree on whether the REST base carries a `/v0`
+// version segment — the API reference shows one, the quickstart curl does not.
+// Rather than bet on one, we try the versioned base first and fall back to the
+// unversioned one on a 404, so the integration works whichever is live. Set
+// AGENTMAIL_BASE_URL to pin an exact base and skip the probing.
+const AGENTMAIL_BASES: readonly string[] = process.env.AGENTMAIL_BASE_URL?.trim()
+  ? process.env.AGENTMAIL_BASE_URL.split(",").map((b) => b.trim().replace(/\/+$/, "")).filter(Boolean)
+  : ["https://api.agentmail.to/v0", "https://api.agentmail.to"];
 
-type AgentMailResponse = { message_id?: string; thread_id?: string; error?: string; message?: string };
+type AgentMailResponse = { message_id?: string; id?: string; thread_id?: string; error?: string; message?: string };
+
+async function agentMailFetch(base: string, path: string, apiKey: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    return await fetch(`${base}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "User-Agent": "Pelsung-Finance/1.0",
+        ...(init.headers ?? {}),
+      },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 async function sendViaAgentMail(message: Message): Promise<string> {
   const apiKey = env.AGENTMAIL_API_KEY!.trim();
   const inboxId = env.AGENTMAIL_INBOX_ID!.trim();
+  const path = `/inboxes/${encodeURIComponent(inboxId)}/messages/send`;
+  const init: RequestInit = {
+    method: "POST",
+    headers: { "Idempotency-Key": message.idempotencyKey },
+    body: JSON.stringify({ to: message.to, subject: message.subject, text: message.text, html: message.html }),
+  };
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  let response: Response;
-  try {
-    response = await fetch(`${AGENTMAIL_BASE}/inboxes/${encodeURIComponent(inboxId)}/messages/send`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": message.idempotencyKey,
-        "User-Agent": "Pelsung-Finance/1.0",
-      },
-      body: JSON.stringify({ to: message.to, subject: message.subject, text: message.text, html: message.html }),
-      signal: controller.signal,
-    });
-  } catch (error) {
-    logger.error({ err: error }, "AgentMail request failed");
-    throw new EmailDeliveryError("The email provider (AgentMail) could not be reached. Check the network settings and retry.");
-  } finally {
-    clearTimeout(timeout);
+  let lastStatus = 0;
+  let lastResult: AgentMailResponse = {};
+  for (const base of AGENTMAIL_BASES) {
+    let response: Response;
+    try {
+      response = await agentMailFetch(base, path, apiKey, init);
+    } catch (error) {
+      logger.error({ err: error, base }, "AgentMail request failed");
+      throw new EmailDeliveryError("The email provider (AgentMail) could not be reached. Check the network settings and retry.");
+    }
+
+    const result = (await response.json().catch(() => ({}))) as AgentMailResponse;
+    const messageId = result.message_id ?? result.id;
+    if (response.ok && messageId) {
+      logger.info({ to: message.to, id: messageId, base }, "Email sent via AgentMail");
+      return messageId;
+    }
+    // A 404 on the first base usually means the path form is wrong, not the
+    // inbox — try the next base before giving up. Any other status is a real
+    // failure (bad key, bad inbox, provider error) and stops here.
+    lastStatus = response.status;
+    lastResult = result;
+    if (response.status !== 404) break;
   }
 
-  const result = (await response.json().catch(() => ({}))) as AgentMailResponse;
-  if (!response.ok || !result.message_id) throw describeAgentMailFailure(response.status, result);
-  logger.info({ to: message.to, id: result.message_id }, "Email sent via AgentMail");
-  return result.message_id;
+  throw describeAgentMailFailure(lastStatus, lastResult);
+}
+
+/** GET /inboxes — confirms the key works and the API is reachable, no send. */
+async function verifyAgentMail(): Promise<void> {
+  const apiKey = env.AGENTMAIL_API_KEY!.trim();
+  let lastStatus = 0;
+  let lastResult: AgentMailResponse = {};
+  for (const base of AGENTMAIL_BASES) {
+    let response: Response;
+    try {
+      response = await agentMailFetch(base, "/inboxes", apiKey, { method: "GET" });
+    } catch (error) {
+      logger.error({ err: error, base }, "AgentMail request failed");
+      throw new EmailDeliveryError("The email provider (AgentMail) could not be reached. Check the network settings and retry.");
+    }
+    if (response.ok) return;
+    lastStatus = response.status;
+    lastResult = (await response.json().catch(() => ({}))) as AgentMailResponse;
+    if (response.status !== 404) break;
+  }
+  throw describeAgentMailFailure(lastStatus, lastResult);
+}
+
+export type AgentMailInbox = { inbox_id: string; address?: string };
+
+/** Lists the inboxes on the AgentMail account. */
+export async function listAgentMailInboxes(): Promise<AgentMailInbox[]> {
+  const apiKey = env.AGENTMAIL_API_KEY?.trim();
+  if (!apiKey) throw new EmailDeliveryError("AGENTMAIL_API_KEY is not set.", "not_configured");
+  let lastStatus = 0;
+  let lastResult: AgentMailResponse = {};
+  for (const base of AGENTMAIL_BASES) {
+    const response = await agentMailFetch(base, "/inboxes", apiKey, { method: "GET" });
+    if (response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { inboxes?: AgentMailInbox[] } & AgentMailInbox;
+      // The list may come back as { inboxes: [...] } or a bare array-like.
+      return body.inboxes ?? (Array.isArray(body) ? (body as AgentMailInbox[]) : []);
+    }
+    lastStatus = response.status;
+    lastResult = (await response.json().catch(() => ({}))) as AgentMailResponse;
+    if (response.status !== 404) break;
+  }
+  throw describeAgentMailFailure(lastStatus, lastResult);
+}
+
+/** Creates a new inbox and returns it. */
+export async function createAgentMailInbox(): Promise<AgentMailInbox> {
+  const apiKey = env.AGENTMAIL_API_KEY?.trim();
+  if (!apiKey) throw new EmailDeliveryError("AGENTMAIL_API_KEY is not set.", "not_configured");
+  let lastStatus = 0;
+  let lastResult: AgentMailResponse = {};
+  for (const base of AGENTMAIL_BASES) {
+    const response = await agentMailFetch(base, "/inboxes", apiKey, { method: "POST", body: "{}" });
+    if (response.ok) return (await response.json().catch(() => ({}))) as AgentMailInbox;
+    lastStatus = response.status;
+    lastResult = (await response.json().catch(() => ({}))) as AgentMailResponse;
+    if (response.status !== 404) break;
+  }
+  throw describeAgentMailFailure(lastStatus, lastResult);
 }
 
 function describeAgentMailFailure(status: number, result: AgentMailResponse): EmailDeliveryError {
@@ -263,7 +355,7 @@ function describeAgentMailFailure(status: number, result: AgentMailResponse): Em
   }
   if (status === 404) {
     return new EmailDeliveryError(
-      "AgentMail could not find that inbox. Check AGENTMAIL_INBOX_ID matches an inbox in your AgentMail dashboard.",
+      "AgentMail could not find that inbox. Check AGENTMAIL_INBOX_ID matches the inbox_id (not the email address) shown by GET /inboxes in your AgentMail account.",
       "sender_not_verified",
     );
   }
@@ -292,6 +384,7 @@ async function deliver(message: Message): Promise<string> {
 /** Verifies the transport can connect and authenticate, without sending. */
 export async function verifyEmailTransport(): Promise<void> {
   requireConfigured();
+  if (env.emailTransport === "agentmail") return verifyAgentMail();
   if (env.emailTransport !== "smtp") return;
   try {
     await smtpTransport().verify();

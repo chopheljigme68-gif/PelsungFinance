@@ -63,7 +63,7 @@ function UserManagement({ data }: { data: AccountingData }) {
       () => (editingUser ? api.updateUser(editingUser.id, payload) : api.createUser(payload)),
       editingUser
         ? `${displayName}'s user details were updated.`
-        : `User created. The user ID and temporary password were emailed to ${username}.`,
+        : `${displayName} was registered. Click Send invitation on their row to email their login details.`,
     );
     if (saved) resetEditor();
   };
@@ -255,7 +255,7 @@ function UserManagement({ data }: { data: AccountingData }) {
                     ) : managedUser.mustChangePassword ? (
                       <span className="status status-pending">
                         <i />
-                        Change required
+                        Temporary
                       </span>
                     ) : (
                       "Current"
