@@ -1,12 +1,16 @@
 /** Display formatting for Ngultrum amounts, dates and voucher wording. */
 
-const amountNumber = new Intl.NumberFormat("en-BT", { maximumFractionDigits: 0 });
+// Ngultrum carry 2 decimal places (chhertum), so amounts always show them.
+const amountNumber = new Intl.NumberFormat("en-BT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Rounds a Ngultrum amount to 2 decimal places. */
+export const roundNu = (value: number): number => Math.round(((Number(value) || 0) + Number.EPSILON) * 100) / 100;
 
 export const money = {
-  format: (value: number) => `Nu. ${amountNumber.format(Number(value) || 0)}`,
+  format: (value: number) => `Nu. ${amountNumber.format(roundNu(value))}`,
 };
 
-export const scheduleNumber = new Intl.NumberFormat("en-BT", { maximumFractionDigits: 2 });
+export const scheduleNumber = new Intl.NumberFormat("en-BT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const numberToWords = (value: number): string => {
   const ones = [
@@ -43,7 +47,16 @@ export const numberToWords = (value: number): string => {
 };
 
 export const ngultrumInWords = (value: number) => `Ngultrum ${numberToWords(value)} Only`;
-export const voucherAmountInWords = (value: number) => `Ngultrum ${numberToWords(value)} and Zero Chetrum Only`;
+
+/** Amount in words including chhertum, e.g. "Ngultrum One Thousand and Fifty Chhertum Only". */
+export const voucherAmountInWords = (value: number) => {
+  const rounded = roundNu(value);
+  const whole = Math.floor(Math.abs(rounded));
+  const chhertum = Math.round((Math.abs(rounded) - whole) * 100);
+  const sign = rounded < 0 ? "Minus " : "";
+  const chhertumWords = chhertum > 0 ? numberToWords(chhertum) : "Zero";
+  return `${sign}Ngultrum ${numberToWords(whole)} and ${chhertumWords} Chhertum Only`;
+};
 
 export const fiscalYearLabel = (fiscalYear: string) => `FY ${fiscalYear.replace("-", "–")}`;
 

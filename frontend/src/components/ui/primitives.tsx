@@ -3,6 +3,7 @@
 import Image from "next/image";
 import type { ReactNode } from "react";
 import type { VoucherStatus } from "@/types";
+import { Portal } from "./portal";
 
 export function PelsungLogo({ className = "" }: { className?: string }) {
   return (
@@ -124,14 +125,16 @@ export function ModalShell({
   dismissible?: boolean;
 }) {
   return (
-    <div
-      className={`modal-backdrop ${className}`.trim()}
-      role="presentation"
-      onMouseDown={(event) => {
-        if (dismissible && event.currentTarget === event.target) onClose();
-      }}
-    >
-      {children}
-    </div>
+    <Portal>
+      <div
+        className={`modal-backdrop ${className}`.trim()}
+        role="presentation"
+        onMouseDown={(event) => {
+          if (dismissible && event.currentTarget === event.target) onClose();
+        }}
+      >
+        {children}
+      </div>
+    </Portal>
   );
 }

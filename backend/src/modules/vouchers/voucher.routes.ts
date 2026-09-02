@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
-import { ISO_DATE_PATTERN, MAX_AMOUNT_NU, VOUCHER_TYPES } from "../../domain/vouchers.js";
+import { ISO_DATE_PATTERN, VOUCHER_TYPES } from "../../domain/vouchers.js";
 import { asyncHandler, validateBody, validateParams } from "../../lib/http.js";
+import { moneyNonNegative, moneyPositive } from "../../lib/money.js";
 import { currentUser, requireAnyPermission, requirePermission } from "../../middleware/auth.js";
 import { requestedFiscalYear, respondWithSnapshot } from "../accounting/accounting.controller.js";
 import type { PayslipDelivery } from "../accounting/accounting.types.js";
@@ -17,7 +18,7 @@ const idParams = z.object({ id: z.coerce.number().int().positive("Select a valid
 
 const budgetLineSchema = z.object({
   activityId: z.coerce.number().int().positive(),
-  amountNu: z.coerce.number().int().positive().max(MAX_AMOUNT_NU),
+  amountNu: moneyPositive,
 });
 
 const createVoucherSchema = z.object({
@@ -27,10 +28,10 @@ const createVoucherSchema = z.object({
   tpn: z.string().trim().max(30).nullish(),
   billReference: z.string().trim().max(120).nullish(),
   description: z.string().trim().min(1, "Enter the particulars.").max(500),
-  amountNu: z.coerce.number().int().max(MAX_AMOUNT_NU).optional(),
-  gstNu: z.coerce.number().int().min(0).max(MAX_AMOUNT_NU).optional(),
+  amountNu: moneyNonNegative.optional(),
+  gstNu: moneyNonNegative.optional(),
   tdsRate: z.union([z.literal(0), z.literal(2), z.literal(5)]).optional(),
-  advanceRecoveryNu: z.coerce.number().int().min(0).max(MAX_AMOUNT_NU).optional(),
+  advanceRecoveryNu: moneyNonNegative.optional(),
   advanceRecoveryVoucherId: z.coerce.number().int().positive().nullish(),
   transactionDate: z.string().regex(ISO_DATE_PATTERN, "Enter a valid transaction date."),
   budgetLines: z.array(budgetLineSchema).max(25).optional(),

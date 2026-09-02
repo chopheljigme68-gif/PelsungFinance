@@ -357,6 +357,14 @@ td select:disabled { color: var(--muted); background: #f3f5f7; }
 }
 
 @media print {
+  /* Portalled print modals are direct children of <body>; pin them to the top
+     of the page so the printed form starts at the margin, not mid-page. The
+     app shell is a sibling that still reserves a full viewport of height, so
+     hide it entirely whenever a modal is open (its content is not being
+     printed — the modal is). */
+  body:has(.modal-backdrop) .app-shell { display: none !important; }
+  .modal-backdrop { display: block !important; min-height: 0 !important; padding: 0 !important; }
+  .modal-backdrop > * { margin: 0 !important; }
   .sidebar, .topbar-actions, .mobile-menu, .primary-button, .secondary-button, .notice { display: none !important; }
   .workspace { width: 100%; margin: 0; }.topbar { position: static; padding: 12px 0; }.content { max-width: none; padding: 15px 0; }.panel { box-shadow: none; } body { background: #fff; }
   body:has(.detailed-report-preview) .sidebar, body:has(.detailed-report-preview) .topbar, body:has(.detailed-report-preview) .report-builder, body:has(.detailed-report-preview) .report-empty-preview { display: none !important; }

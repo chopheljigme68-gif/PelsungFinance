@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { money, ngultrumInWords } from "@/lib/format";
 import { calculateBhutanMonthlyPayrollTax, calculateHealthContribution } from "@/lib/payroll-tax";
 import { useApp } from "@/providers/app-provider";
+import { BANKS } from "@/lib/reference";
 import type { Department, Employee } from "@/types";
 
 /* -------------------------------------------------------------------------- */
@@ -203,6 +204,8 @@ export function EmployeeModal({
   const [fullName, setFullName] = useState(employee?.fullName ?? "");
   const [designation, setDesignation] = useState(employee?.designation ?? "");
   const [department, setDepartment] = useState(employee?.department ?? departments[0]?.name ?? "");
+  const [accountNumber, setAccountNumber] = useState(employee?.accountNumber ?? "");
+  const [bankName, setBankName] = useState(employee?.bankName ?? "");
   const [basicPayNu, setBasicPayNu] = useState(String(employee?.basicPayNu ?? ""));
   const [allowancesNu, setAllowancesNu] = useState(String(employee?.allowancesNu ?? 0));
   const [arrearNu, setArrearNu] = useState(String(employee?.arrearNu ?? 0));
@@ -227,6 +230,8 @@ export function EmployeeModal({
       fullName,
       designation,
       department,
+      accountNumber,
+      bankName,
       basicPayNu: Number(basicPayNu),
       allowancesNu: Number(allowancesNu),
       arrearNu: Number(arrearNu),
@@ -349,13 +354,35 @@ export function EmployeeModal({
             </select>
           </label>
 
+          <div className="form-section-label wide">Bank details (for salary credit)</div>
+          <label>
+            Bank
+            <select value={bankName} onChange={(event) => setBankName(event.target.value)}>
+              <option value="">Select a bank…</option>
+              {BANKS.map((bank) => (
+                <option key={bank} value={bank}>
+                  {bank}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Account number
+            <input
+              maxLength={30}
+              value={accountNumber}
+              onChange={(event) => setAccountNumber(event.target.value)}
+              placeholder="e.g. 200123456789"
+            />
+          </label>
+
           <div className="form-section-label wide">Earnings</div>
           <label>
             Basic Pay (Nu.)
             <input
               type="number"
               min="1"
-              step="1"
+              step="0.01"
               value={basicPayNu}
               onChange={(event) => setBasicPayNu(event.target.value)}
               required
@@ -366,7 +393,7 @@ export function EmployeeModal({
             <input
               type="number"
               min="0"
-              step="1"
+              step="0.01"
               value={allowancesNu}
               onChange={(event) => setAllowancesNu(event.target.value)}
               required
@@ -377,7 +404,7 @@ export function EmployeeModal({
             <input
               type="number"
               min="0"
-              step="1"
+              step="0.01"
               value={arrearNu}
               onChange={(event) => setArrearNu(event.target.value)}
               required
@@ -398,7 +425,7 @@ export function EmployeeModal({
             <input
               type="number"
               min="0"
-              step="1"
+              step="0.01"
               value={advanceNu}
               onChange={(event) => setAdvanceNu(event.target.value)}
               required
@@ -490,6 +517,14 @@ export function PayslipModal({
               <div>
                 <dt>Email ID</dt>
                 <dd>: {employee.email || "Not recorded"}</dd>
+              </div>
+              <div>
+                <dt>Bank</dt>
+                <dd>: {employee.bankName || "Not recorded"}</dd>
+              </div>
+              <div>
+                <dt>Account No.</dt>
+                <dd>: {employee.accountNumber || "Not recorded"}</dd>
               </div>
             </dl>
           </section>

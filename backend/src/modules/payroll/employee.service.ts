@@ -2,6 +2,7 @@ import { and, eq, ne, or, sql as raw } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { departments, employees, payrollRunItems, payrollRuns } from "../../db/schema.js";
 import { calculateEmployeePayroll } from "../../domain/payroll-tax.js";
+import { roundNu } from "../../domain/vouchers.js";
 import { audit } from "../../lib/audit.js";
 import { PG_UNIQUE_VIOLATION, badRequest, conflict, isPostgresError, notFound } from "../../lib/errors.js";
 import type { SessionUser } from "../auth/auth.service.js";
@@ -81,6 +82,8 @@ export type EmployeeInput = {
   fullName: string;
   designation: string;
   department: string;
+  accountNumber?: string;
+  bankName?: string;
   basicPayNu: number;
   allowancesNu: number;
   arrearNu: number;
@@ -96,10 +99,12 @@ function normalizeEmployee(input: EmployeeInput) {
     fullName: input.fullName.trim(),
     designation: input.designation.trim(),
     department: input.department.trim(),
-    basicPayNu: Math.round(input.basicPayNu),
-    allowancesNu: Math.round(input.allowancesNu),
-    arrearNu: Math.round(input.arrearNu),
-    advanceNu: Math.round(input.advanceNu),
+    accountNumber: input.accountNumber?.trim() || null,
+    bankName: input.bankName?.trim() || null,
+    basicPayNu: roundNu(input.basicPayNu),
+    allowancesNu: roundNu(input.allowancesNu),
+    arrearNu: roundNu(input.arrearNu),
+    advanceNu: roundNu(input.advanceNu),
   };
 }
 

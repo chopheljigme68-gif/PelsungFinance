@@ -1,16 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
-import { MAX_AMOUNT_NU } from "../../domain/vouchers.js";
 import { asyncHandler, validateBody } from "../../lib/http.js";
+import { moneyPositive } from "../../lib/money.js";
 import { currentUser, requirePermission } from "../../middleware/auth.js";
 import { requestedFiscalYear, respondWithSnapshot } from "../accounting/accounting.controller.js";
 import { addBudgetActivity, addSupplementaryBudget, reappropriateBudget } from "./budget.service.js";
 
-const money = z.coerce
-  .number()
-  .int("Enter a whole Ngultrum amount.")
-  .positive("Enter a positive amount.")
-  .max(MAX_AMOUNT_NU, "That amount is larger than this system records.");
+const money = moneyPositive;
 
 const addActivitySchema = z.object({
   fiscalYear: z.string().optional(),

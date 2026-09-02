@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { ModalShell } from "@/components/ui/primitives";
 import { ApiError, api } from "@/lib/api";
 import { fiscalYearEndDate, fiscalYearStartDate } from "@/lib/fiscal-year";
-import { currentBhutanDate, fiscalYearLabel, money } from "@/lib/format";
+import { currentBhutanDate, fiscalYearLabel, money, roundNu } from "@/lib/format";
 import { outstandingAdvanceBalance } from "@/lib/totals";
 import { calculateVoucherDeductions, TPN_PATTERN, isPostedStatus, voucherBankEffectNu } from "@/lib/vouchers";
 import { useApp } from "@/providers/app-provider";
@@ -71,7 +71,7 @@ export function VoucherModal({
     return {
       ...line,
       activity,
-      amountNu: Math.max(Math.round(Number(line.amount) || 0), 0),
+      amountNu: Math.max(roundNu(Number(line.amount) || 0), 0),
       availableNu: activity ? activity.approvedNu - activity.committedNu : 0,
     };
   });
@@ -85,10 +85,10 @@ export function VoucherModal({
     (item) => item.voucher.id === Number(advanceRecoveryVoucherId),
   );
 
-  const grossAmountNu = hasNoBudgetImpact ? Math.max(Math.round(Number(amount) || 0), 0) : allocatedAmountNu;
-  const gstAmountNu = Math.max(Math.round(Number(gstNu) || 0), 0);
+  const grossAmountNu = hasNoBudgetImpact ? Math.max(roundNu(Number(amount) || 0), 0) : allocatedAmountNu;
+  const gstAmountNu = Math.max(roundNu(Number(gstNu) || 0), 0);
   const recoveryAmountNu =
-    isPayment && advanceRecoveryVoucherId ? Math.max(Math.round(Number(advanceRecoveryNu) || 0), 0) : 0;
+    isPayment && advanceRecoveryVoucherId ? Math.max(roundNu(Number(advanceRecoveryNu) || 0), 0) : 0;
   const deductionCalculation = calculateVoucherDeductions(
     grossAmountNu,
     gstAmountNu,
@@ -356,7 +356,7 @@ export function VoucherModal({
                             value={item.id}
                             disabled={budgetLines.some((other) => other.key !== line.key && other.activityId === item.id)}
                           >
-                            {item.obc} · {item.activity}
+                            {item.obc} · {item.activity} ({item.category})
                           </option>
                         ))}
                       </select>
@@ -366,7 +366,7 @@ export function VoucherModal({
                       <input
                         type="number"
                         min="1"
-                        step="1"
+                        step="0.01"
                         max={line.availableNu}
                         value={line.amount}
                         onChange={(event) => updateBudgetLine(line.key, { amount: event.target.value })}
@@ -377,7 +377,9 @@ export function VoucherModal({
                     <div className="voucher-budget-line-balance">
                       <span>Available</span>
                       <strong>{money.format(line.availableNu)}</strong>
-                      <small>{line.activity?.category ?? "Select an activity"}</small>
+                      <small>
+                        {line.activity ? `Programme (recommended): ${line.activity.category}` : "Select an activity"}
+                      </small>
                     </div>
                     <button
                       className="voucher-budget-line-remove"
@@ -430,7 +432,7 @@ export function VoucherModal({
               <input
                 type="number"
                 min="1"
-                step="1"
+                step="0.01"
                 value={amount}
                 onChange={(event) => {
                   setAmount(event.target.value);
@@ -477,7 +479,7 @@ export function VoucherModal({
                 <input
                   type="number"
                   min="0"
-                  step="1"
+                  step="0.01"
                   value={gstNu}
                   onChange={(event) => {
                     setGstNu(event.target.value);
@@ -537,7 +539,7 @@ export function VoucherModal({
                 <input
                   type="number"
                   min="0"
-                  step="1"
+                  step="0.01"
                   max={selectedOutstandingAdvance?.outstandingNu}
                   value={advanceRecoveryNu}
                   disabled={!advanceRecoveryVoucherId}

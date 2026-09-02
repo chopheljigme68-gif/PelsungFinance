@@ -1,21 +1,22 @@
 /**
  * Pelsung Finance — Postgres schema (Supabase).
  *
- * Money is stored in whole Ngultrum as `bigint` and mapped to `number` by
- * drizzle (`mode: "number"`). Ngultrum amounts in this system never approach
- * Number.MAX_SAFE_INTEGER, and the application validates a Nu. 1,000,000,000,000
- * ceiling on every write.
+ * Money is stored as `numeric(14, 2)` — Ngultrum with 2 decimal places
+ * (chhertum). The postgres-js driver (see db/client.ts) parses numeric into a
+ * JS `number` on read and serialises numbers on write, so `.$type<number>()`
+ * keeps the application working in plain numbers. The application validates a
+ * Nu. 1,000,000,000,000 ceiling and rounds to 2 places on every write.
  *
  * Timestamps are stored as `timestamptz` and exposed to the API layer as ISO
  * strings so the client contract is identical to the previous SQLite build.
  */
 import { relations, sql } from "drizzle-orm";
 import {
-  bigint,
   boolean,
   check,
   index,
   integer,
+  numeric,
   pgTable,
   serial,
   text,
@@ -23,8 +24,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-/** Whole-Ngultrum money column. */
-const nu = (name: string) => bigint(name, { mode: "number" });
+/** Ngultrum money column, 2 decimal places, typed as a JS number. */
+const nu = (name: string) => numeric(name, { precision: 14, scale: 2 }).$type<number>();
 
 /* -------------------------------------------------------------------------- */
 /* Identity and access                                                        */
@@ -200,6 +201,9 @@ export const employees = pgTable(
     email: text("email"),
     designation: text("designation").notNull(),
     department: text("department").notNull(),
+    // Bank details for salary credit.
+    accountNumber: text("account_number"),
+    bankName: text("bank_name"),
     basicPayNu: nu("basic_pay_nu").notNull().default(0),
     allowancesNu: nu("allowances_nu").notNull().default(0),
     arrearNu: nu("arrear_nu").notNull().default(0),

@@ -1,6 +1,7 @@
 "use client";
 
 import { PelsungLogo } from "@/components/ui/primitives";
+import { Portal } from "@/components/ui/portal";
 import { money, voucherAmountInWords, voucherDate } from "@/lib/format";
 import type { Activity, Voucher } from "@/types";
 import { showsStandardVoucherDeductions, voucherDisplayType } from "./voucher-parts";
@@ -269,6 +270,7 @@ export function VoucherPrintModal({
       : "Cash Balance";
 
   return (
+    <Portal>
     <div
       className="modal-backdrop voucher-print-backdrop"
       role="presentation"
@@ -580,5 +582,6 @@ export function VoucherPrintModal({
         </div>
       </article>
     </div>
+    </Portal>
   );
 }

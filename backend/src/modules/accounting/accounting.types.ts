@@ -87,6 +87,8 @@ export type Employee = {
   fullName: string;
   designation: string;
   department: string;
+  accountNumber: string | null;
+  bankName: string | null;
   basicPayNu: number;
   allowancesNu: number;
   arrearNu: number;

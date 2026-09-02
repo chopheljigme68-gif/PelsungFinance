@@ -297,6 +297,8 @@ async function selectEmployees(executor: DbExecutor): Promise<EmployeeRow[]> {
       full_name       AS "fullName",
       designation,
       department,
+      account_number  AS "accountNumber",
+      bank_name       AS "bankName",
       COALESCE(NULLIF(basic_pay_nu, 0), gross_pay_nu) AS "basicPayNu",
       COALESCE(allowances_nu, 0) AS "allowancesNu",
       COALESCE(arrear_nu, 0)     AS "arrearNu",

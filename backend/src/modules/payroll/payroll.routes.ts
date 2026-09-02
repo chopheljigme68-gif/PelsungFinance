@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
 import { normalizePayMonth } from "../../domain/fiscal-year.js";
-import { CID_PATTERN, EMAIL_PATTERN, MAX_AMOUNT_NU, TPN_PATTERN } from "../../domain/vouchers.js";
+import { BANKS } from "../../domain/reference.js";
+import { CID_PATTERN, EMAIL_PATTERN, TPN_PATTERN } from "../../domain/vouchers.js";
 import { asyncHandler, validateBody, validateParams } from "../../lib/http.js";
+import { moneyAny, moneyNonNegative, moneyPositive } from "../../lib/money.js";
 import { badRequest } from "../../lib/errors.js";
 import { currentUser, requirePermission } from "../../middleware/auth.js";
 import { requestedFiscalYear, respondWithSnapshot } from "../accounting/accounting.controller.js";
@@ -27,7 +29,7 @@ const departmentSchema = z.object({
     .max(120, "Enter a department name between 2 and 120 characters."),
 });
 
-const payAmount = z.coerce.number().int().min(0).max(MAX_AMOUNT_NU);
+const payAmount = moneyNonNegative;
 
 const employeeSchema = z.object({
   fiscalYear: z.string().optional(),
@@ -48,7 +50,22 @@ const employeeSchema = z.object({
   fullName: z.string().trim().min(1, "Enter the full name.").max(120),
   designation: z.string().trim().min(1, "Enter the designation.").max(120),
   department: z.string().trim().min(1, "Select a department.").max(120),
-  basicPayNu: z.coerce.number().int().positive("Enter a positive Basic Pay.").max(MAX_AMOUNT_NU),
+  // Bank details for salary credit. Optional so existing flows are unaffected.
+  accountNumber: z
+    .string()
+    .trim()
+    .max(30)
+    .regex(/^[A-Za-z0-9-]*$/, "Enter a valid account number.")
+    .optional()
+    .default(""),
+  bankName: z
+    .string()
+    .trim()
+    .max(60)
+    .refine((v) => v === "" || (BANKS as readonly string[]).includes(v), "Select a bank from the list.")
+    .optional()
+    .default(""),
+  basicPayNu: moneyPositive,
   allowancesNu: payAmount.default(0),
   arrearNu: payAmount.default(0),
   advanceNu: payAmount.default(0),
@@ -74,9 +91,9 @@ const finalizePayBillSchema = z.object({
   fiscalYear: z.string().optional(),
   payMonth: z.string(),
   department: z.string().trim().min(1, "Select a valid employee department.").max(120),
-  expectedGrossPayNu: z.coerce.number().int(),
-  expectedRecoveriesNu: z.coerce.number().int(),
-  expectedNetPayNu: z.coerce.number().int(),
+  expectedGrossPayNu: moneyAny,
+  expectedRecoveriesNu: moneyAny,
+  expectedNetPayNu: moneyAny,
 });
 
 const postPayBillSchema = z.object({

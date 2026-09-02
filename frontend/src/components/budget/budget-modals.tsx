@@ -3,7 +3,8 @@
 import { useState, type FormEvent } from "react";
 import { ModalShell } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
-import { fiscalYearLabel, money } from "@/lib/format";
+import { fiscalYearLabel, money, roundNu } from "@/lib/format";
+import { PROGRAMS } from "@/lib/reference";
 import { useApp } from "@/providers/app-provider";
 import type { Activity } from "@/types";
 
@@ -58,14 +59,17 @@ export function BudgetActivityModal({ onClose }: { onClose: () => void }) {
         </header>
         <div className="form-grid">
           <label>
-            Programme / category
-            <input
-              maxLength={120}
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              placeholder="e.g. Programme Operations"
-              required
-            />
+            Programme
+            <select value={category} onChange={(event) => setCategory(event.target.value)} required>
+              <option value="" disabled>
+                Select a programme…
+              </option>
+              {PROGRAMS.map((programme) => (
+                <option key={programme} value={programme}>
+                  {programme}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Financing source
@@ -110,7 +114,7 @@ export function BudgetActivityModal({ onClose }: { onClose: () => void }) {
               type="number"
               min="1"
               max="1000000000000"
-              step="1"
+              step="0.01"
               value={approvedNu}
               onChange={(event) => setApprovedNu(event.target.value)}
               placeholder="0"
@@ -158,7 +162,7 @@ export function BudgetReappropriationModal({ activities, onClose }: { activities
   const sourceActivity = activities.find((activity) => activity.id === sourceActivityId);
   const destinationActivity = activities.find((activity) => activity.id === destinationActivityId);
   const sourceAvailableNu = sourceActivity ? Math.max(sourceActivity.approvedNu - sourceActivity.committedNu, 0) : 0;
-  const transferAmountNu = Math.round(Number(amountNu));
+  const transferAmountNu = roundNu(Number(amountNu));
   const projectedSourceNu = sourceActivity
     ? sourceActivity.approvedNu - (Number.isFinite(transferAmountNu) ? transferAmountNu : 0)
     : 0;
@@ -250,7 +254,7 @@ export function BudgetReappropriationModal({ activities, onClose }: { activities
               type="number"
               min="1"
               max={sourceAvailableNu}
-              step="1"
+              step="0.01"
               value={amountNu}
               onChange={(event) => setAmountNu(event.target.value)}
               placeholder="0"
@@ -327,7 +331,7 @@ export function SupplementaryBudgetModal({ activities, onClose }: { activities: 
   const [saving, setSaving] = useState(false);
 
   const activity = activities.find((item) => item.id === activityId);
-  const supplementaryAmountNu = Math.round(Number(amountNu));
+  const supplementaryAmountNu = roundNu(Number(amountNu));
   const currentApprovedNu = activity?.approvedNu ?? 0;
   const currentAvailableNu = activity ? Math.max(activity.approvedNu - activity.committedNu, 0) : 0;
   const validAmount =
@@ -393,7 +397,7 @@ export function SupplementaryBudgetModal({ activities, onClose }: { activities: 
               type="number"
               min="1"
               max="1000000000000"
-              step="1"
+              step="0.01"
               value={amountNu}
               onChange={(event) => setAmountNu(event.target.value)}
               placeholder="0"

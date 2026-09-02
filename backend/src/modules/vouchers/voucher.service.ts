@@ -6,6 +6,7 @@ import {
   TPN_PATTERN,
   calculateVoucherDeductions,
   formatVoucherNumber,
+  roundNu,
   type VoucherStatus,
   type VoucherType,
 } from "../../domain/vouchers.js";
@@ -59,7 +60,7 @@ export async function createVoucher(
     : (input.budgetLines?.length
         ? input.budgetLines
         : [{ activityId: Number(input.activityId), amountNu: Number(input.amountNu) }]
-      ).map((line) => ({ activityId: Number(line.activityId), amountNu: Math.round(Number(line.amountNu)) }));
+      ).map((line) => ({ activityId: Number(line.activityId), amountNu: roundNu(Number(line.amountNu)) }));
 
   if (!hasNoBudgetImpact) {
     const uniqueActivityIds = new Set(budgetLines.map((line) => line.activityId));
@@ -76,13 +77,13 @@ export async function createVoucher(
   }
 
   const amountNu = hasNoBudgetImpact
-    ? Math.round(Number(input.amountNu))
-    : budgetLines.reduce((sum, line) => sum + line.amountNu, 0);
+    ? roundNu(Number(input.amountNu))
+    : roundNu(budgetLines.reduce((sum, line) => sum + line.amountNu, 0));
   if (!Number.isFinite(amountNu) || amountNu <= 0) throw badRequest("Enter a valid positive voucher amount.");
 
-  const gstNu = isPayment ? Math.round(Number(input.gstNu ?? 0)) : 0;
+  const gstNu = isPayment ? roundNu(Number(input.gstNu ?? 0)) : 0;
   const tdsRate = isPayment ? Math.round(Number(input.tdsRate ?? 0)) : 0;
-  const advanceRecoveryNu = isPayment ? Math.round(Number(input.advanceRecoveryNu ?? 0)) : 0;
+  const advanceRecoveryNu = isPayment ? roundNu(Number(input.advanceRecoveryNu ?? 0)) : 0;
   const advanceRecoveryVoucherId = advanceRecoveryNu > 0 ? Number(input.advanceRecoveryVoucherId ?? 0) || null : null;
 
   const { tdsNu, netPaymentNu: paymentNetNu } = calculateVoucherDeductions(amountNu, gstNu, tdsRate, advanceRecoveryNu);

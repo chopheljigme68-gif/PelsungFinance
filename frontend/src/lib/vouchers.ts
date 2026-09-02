@@ -54,9 +54,10 @@ export function calculateVoucherDeductions(
   tdsRate: number,
   advanceRecoveryNu: number,
 ) {
-  const tdsBasisNu = Math.max(grossNu - gstNu, 0);
-  const tdsNu = Math.round((tdsBasisNu * tdsRate) / 100);
-  const netPaymentNu = grossNu - tdsNu - advanceRecoveryNu;
+  const roundNu = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+  const tdsBasisNu = roundNu(Math.max(grossNu - gstNu, 0));
+  const tdsNu = roundNu((tdsBasisNu * tdsRate) / 100);
+  const netPaymentNu = roundNu(grossNu - tdsNu - advanceRecoveryNu);
   return { tdsBasisNu, tdsNu, netPaymentNu };
 }
 

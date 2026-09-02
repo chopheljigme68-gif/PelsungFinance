@@ -4,6 +4,11 @@
  * Mirrored in `frontend/src/lib/vouchers.ts`.
  */
 
+/** Rounds a Ngultrum amount to 2 decimal places (chhertum). */
+export function roundNu(amountNu: number): number {
+  return Math.round((amountNu + Number.EPSILON) * 100) / 100;
+}
+
 export const VOUCHER_TDS_RATES = [0, 2, 5] as const;
 export type VoucherTdsRate = (typeof VOUCHER_TDS_RATES)[number];
 
@@ -54,9 +59,9 @@ export function calculateVoucherDeductions(
   tdsRate: number,
   advanceRecoveryNu: number,
 ) {
-  const tdsBasisNu = Math.max(grossNu - gstNu, 0);
-  const tdsNu = Math.round((tdsBasisNu * tdsRate) / 100);
-  const netPaymentNu = grossNu - tdsNu - advanceRecoveryNu;
+  const tdsBasisNu = roundNu(Math.max(grossNu - gstNu, 0));
+  const tdsNu = roundNu((tdsBasisNu * tdsRate) / 100);
+  const netPaymentNu = roundNu(grossNu - tdsNu - advanceRecoveryNu);
   return { tdsBasisNu, tdsNu, netPaymentNu };
 }
 
