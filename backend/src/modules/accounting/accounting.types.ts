@@ -38,6 +38,8 @@ export type Voucher = {
   voucherType: VoucherType;
   payee: string;
   tpn: string | null;
+  payeeAccountNumber: string | null;
+  payeeBankName: string | null;
   billReference: string | null;
   description: string;
   amountNu: number;

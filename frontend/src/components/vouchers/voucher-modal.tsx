@@ -5,6 +5,7 @@ import { ModalShell } from "@/components/ui/primitives";
 import { ApiError, api } from "@/lib/api";
 import { fiscalYearEndDate, fiscalYearStartDate } from "@/lib/fiscal-year";
 import { currentBhutanDate, fiscalYearLabel, money, roundNu } from "@/lib/format";
+import { BANKS } from "@/lib/reference";
 import { outstandingAdvanceBalance } from "@/lib/totals";
 import { calculateVoucherDeductions, TPN_PATTERN, isPostedStatus, voucherBankEffectNu } from "@/lib/vouchers";
 import { useApp } from "@/providers/app-provider";
@@ -50,6 +51,8 @@ export function VoucherModal({
   );
   const [payee, setPayee] = useState("");
   const [tpn, setTpn] = useState("");
+  const [payeeAccountNumber, setPayeeAccountNumber] = useState("");
+  const [payeeBankName, setPayeeBankName] = useState("");
   const [billReference, setBillReference] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -177,6 +180,8 @@ export function VoucherModal({
           voucherType,
           payee,
           tpn: requiresTpn ? normalizedTpn : null,
+          payeeAccountNumber,
+          payeeBankName,
           billReference,
           description,
           amountNu: grossAmountNu,
@@ -417,6 +422,30 @@ export function VoucherModal({
               required
             />
           </label>
+          {!isFundReceipt && (
+            <>
+              <label>
+                Payee bank <small>Optional</small>
+                <select value={payeeBankName} onChange={(event) => setPayeeBankName(event.target.value)}>
+                  <option value="">Select a bank…</option>
+                  {BANKS.map((bank) => (
+                    <option key={bank} value={bank}>
+                      {bank}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Payee account number <small>Optional</small>
+                <input
+                  maxLength={30}
+                  value={payeeAccountNumber}
+                  onChange={(event) => setPayeeAccountNumber(event.target.value)}
+                  placeholder="e.g. 200123456789"
+                />
+              </label>
+            </>
+          )}
           <label>
             {isFundReceipt ? "Fund advice / receipt number" : "GRN / Bill number"} <small>Optional</small>
             <input

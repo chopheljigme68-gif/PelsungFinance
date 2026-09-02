@@ -157,6 +157,8 @@ async function selectVouchers(executor: DbExecutor, fiscalYear: string): Promise
       v.voucher_type       AS "voucherType",
       v.payee,
       v.tpn,
+      v.payee_account_number AS "payeeAccountNumber",
+      v.payee_bank_name      AS "payeeBankName",
       v.bill_reference     AS "billReference",
       v.description,
       v.amount_nu          AS "amountNu",

@@ -15,6 +15,13 @@
       "when": 1788259000000,
       "tag": "0001_decimals_and_bank",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788330000000,
+      "tag": "0002_voucher_bank",
+      "breakpoints": true
     }
   ]
 }

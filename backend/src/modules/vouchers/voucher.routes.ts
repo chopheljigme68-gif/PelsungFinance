@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { BANKS } from "../../domain/reference.js";
 import { ISO_DATE_PATTERN, VOUCHER_TYPES } from "../../domain/vouchers.js";
 import { asyncHandler, validateBody, validateParams } from "../../lib/http.js";
 import { moneyNonNegative, moneyPositive } from "../../lib/money.js";
@@ -26,6 +27,18 @@ const createVoucherSchema = z.object({
   voucherType: z.enum(VOUCHER_TYPES, { message: "Select a valid voucher type." }),
   payee: z.string().trim().min(1, "Enter the payee.").max(160),
   tpn: z.string().trim().max(30).nullish(),
+  payeeAccountNumber: z
+    .string()
+    .trim()
+    .max(30)
+    .regex(/^[A-Za-z0-9-]*$/, "Enter a valid account number.")
+    .nullish(),
+  payeeBankName: z
+    .string()
+    .trim()
+    .max(60)
+    .refine((v) => !v || (BANKS as readonly string[]).includes(v), "Select a bank from the list.")
+    .nullish(),
   billReference: z.string().trim().max(120).nullish(),
   description: z.string().trim().min(1, "Enter the particulars.").max(500),
   amountNu: moneyNonNegative.optional(),

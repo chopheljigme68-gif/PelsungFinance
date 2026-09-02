@@ -24,6 +24,8 @@ export type CreateVoucherInput = {
   voucherType: VoucherType;
   payee: string;
   tpn?: string | null;
+  payeeAccountNumber?: string | null;
+  payeeBankName?: string | null;
   billReference?: string | null;
   description: string;
   amountNu?: number;
@@ -143,6 +145,8 @@ export async function createVoucher(
         voucherType: input.voucherType,
         payee: input.payee,
         tpn: requiresTpn ? tpn : null,
+        payeeAccountNumber: input.payeeAccountNumber?.trim() || null,
+        payeeBankName: input.payeeBankName?.trim() || null,
         billReference: input.billReference?.trim() || null,
         description: input.description,
         amountNu,

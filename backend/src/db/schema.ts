@@ -367,6 +367,9 @@ export const vouchers = pgTable(
     voucherType: text("voucher_type").notNull(),
     payee: text("payee").notNull(),
     tpn: text("tpn"),
+    // Payee bank details for the payment.
+    payeeAccountNumber: text("payee_account_number"),
+    payeeBankName: text("payee_bank_name"),
     billReference: text("bill_reference"),
     description: text("description").notNull(),
     amountNu: nu("amount_nu").notNull(),

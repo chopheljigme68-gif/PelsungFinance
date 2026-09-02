@@ -344,6 +344,18 @@ export function VoucherPrintModal({
                   <dd>: {voucher.tpn}</dd>
                 </div>
               )}
+              {voucher.payeeBankName && (
+                <div>
+                  <dt>Bank</dt>
+                  <dd>: {voucher.payeeBankName}</dd>
+                </div>
+              )}
+              {voucher.payeeAccountNumber && (
+                <div>
+                  <dt>Account No.</dt>
+                  <dd>: {voucher.payeeAccountNumber}</dd>
+                </div>
+              )}
               <div>
                 <dt>GRN/Bill No.</dt>
                 <dd>: {voucher.billReference || "______________________________"}</dd>
