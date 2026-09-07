@@ -1,6 +1,11 @@
 import type { AccountingData, AppUser, PasswordPolicy } from "@/types";
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
+// All API calls go to the app's OWN origin (a relative `/api/...` path). Next.js
+// proxies those to the backend (see `next.config.ts` → rewrites), which keeps the
+// session cookie first-party so it works in every browser with no cross-site
+// cookie configuration. The backend URL lives in `NEXT_PUBLIC_API_URL`, consumed
+// by the rewrite — not here.
+const API_URL = "";
 
 /**
  * An error the API reported deliberately.
