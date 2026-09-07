@@ -85,8 +85,20 @@ export const api = {
     request<SessionResponse>("/api/auth/password", { method: "POST", body }),
 
   /* Read model ------------------------------------------------------------- */
-  accounting: (fiscalYear: string, signal?: AbortSignal) =>
-    request<AccountingData>(`/api/accounting?fiscalYear=${encodeURIComponent(fiscalYear)}`, { signal }),
+  accounting: async (fiscalYear: string, signal?: AbortSignal) => {
+    const data = await request<AccountingData>(`/api/accounting?fiscalYear=${encodeURIComponent(fiscalYear)}`, {
+      signal,
+    });
+    // Guarantee the optional account sections are always arrays, so a backend
+    // deployed before its migration (or an older backend) can never crash a
+    // screen that reads them.
+    return {
+      ...data,
+      bankReconciliations: data.bankReconciliations ?? [],
+      bankReconciliationItems: data.bankReconciliationItems ?? [],
+      monthClosures: data.monthClosures ?? [],
+    } satisfies AccountingData;
+  },
 
   /* Budget ----------------------------------------------------------------- */
   addBudgetActivity: (body: Record<string, unknown>) =>

@@ -1,5 +1,6 @@
 import { sql as raw } from "drizzle-orm";
 import { db, type DbExecutor } from "../../db/client.js";
+import { logger } from "../../lib/logger.js";
 import { BASE_FISCAL_YEARS } from "../../domain/fiscal-year.js";
 import { BHUTAN_PAYROLL_TAX_RULE, calculateBhutanMonthlyPayrollTax, calculateHealthContribution } from "../../domain/payroll-tax.js";
 import { roleLabels, type AppRole } from "../../domain/permissions.js";
@@ -33,6 +34,22 @@ import type {
  * query because they aggregate committed/utilized budget in the same pass —
  * this is the one place raw SQL earns its keep.
  */
+/**
+ * Optional read-model sections (bank reconciliation, month close) must never
+ * take the whole snapshot down. If their tables are not present yet — a backend
+ * deployed ahead of its migration (`0003`) — or any transient read fails, we
+ * serve an empty list and log it, so the dashboard and every other screen still
+ * load instantly. The feature simply lights up once the migration is applied.
+ */
+async function optionalList<T>(label: string, query: Promise<T[]>): Promise<T[]> {
+  try {
+    return await query;
+  } catch (error) {
+    logger.warn({ err: error, section: label }, "optional accounting section unavailable — serving empty");
+    return [];
+  }
+}
+
 export async function loadAccountingData(
   user: SessionUser,
   fiscalYear: string,
@@ -73,9 +90,13 @@ export async function loadAccountingData(
     canManageUsers ? selectUsers(executor) : Promise.resolve([]),
     selectBudgetReappropriations(executor, fiscalYear),
     selectSupplementaryBudgets(executor, fiscalYear),
-    canViewAccounts ? selectBankReconciliations(executor, fiscalYear) : Promise.resolve([]),
-    canViewAccounts ? selectBankReconciliationItems(executor, fiscalYear) : Promise.resolve([]),
-    canViewAccounts ? selectMonthClosures(executor, fiscalYear) : Promise.resolve([]),
+    canViewAccounts
+      ? optionalList("bankReconciliations", selectBankReconciliations(executor, fiscalYear))
+      : Promise.resolve([]),
+    canViewAccounts
+      ? optionalList("bankReconciliationItems", selectBankReconciliationItems(executor, fiscalYear))
+      : Promise.resolve([]),
+    canViewAccounts ? optionalList("monthClosures", selectMonthClosures(executor, fiscalYear)) : Promise.resolve([]),
   ]);
 
   const fiscalYears = [...new Set([...BASE_FISCAL_YEARS, fiscalYear, ...storedFiscalYears])].sort((a, b) =>
