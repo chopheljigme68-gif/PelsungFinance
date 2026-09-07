@@ -7,6 +7,7 @@ import { getAccountingSnapshot } from "../modules/accounting/accounting.controll
 import { authRouter } from "../modules/auth/auth.routes.js";
 import { budgetRouter } from "../modules/budget/budget.routes.js";
 import { payrollRouter } from "../modules/payroll/payroll.routes.js";
+import { reconciliationRouter } from "../modules/reconciliation/reconciliation.routes.js";
 import { remittanceRouter } from "../modules/remittance/remittance.routes.js";
 import { userRouter } from "../modules/users/user.routes.js";
 import { voucherRouter } from "../modules/vouchers/voucher.routes.js";
@@ -24,6 +25,13 @@ apiRouter.get(
       // this list against the exact origin the browser reports. These are
       // public URLs, so publishing them reveals nothing a visitor cannot see.
       corsOrigins: env.corsOrigins,
+      // Email config presence — NOT the secret values, just whether each is set,
+      // so "works local, fails deployed" can be diagnosed by opening this URL.
+      email: {
+        transport: env.emailTransport, // agentmail | smtp | resend | none
+        agentmailApiKeySet: Boolean(env.AGENTMAIL_API_KEY?.trim()),
+        agentmailInboxSet: Boolean(env.AGENTMAIL_INBOX_ID?.trim()),
+      },
       time: new Date().toISOString(),
     });
   }),
@@ -43,5 +51,6 @@ apiRouter.use(requireAuth, requireTransactionalUser);
 apiRouter.use("/budget", budgetRouter);
 apiRouter.use("/vouchers", voucherRouter);
 apiRouter.use("/payroll", payrollRouter);
+apiRouter.use("/reconciliation", reconciliationRouter);
 apiRouter.use("/remittance", remittanceRouter);
 apiRouter.use("/users", userRouter);

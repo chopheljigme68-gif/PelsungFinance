@@ -455,6 +455,78 @@ export const supplierTdsRemittanceItems = pgTable(
 );
 
 /* -------------------------------------------------------------------------- */
+/* Bank reconciliation and month close                                        */
+/* -------------------------------------------------------------------------- */
+
+export const bankReconciliations = pgTable(
+  "bank_reconciliations",
+  {
+    id: serial("id").primaryKey(),
+    fiscalYear: text("fiscal_year").notNull(),
+    accountNumber: text("account_number").notNull(),
+    statementMonth: text("statement_month").notNull(),
+    totalFundsReceivedNu: nu("total_funds_received_nu").notNull().default(0),
+    closingCashBookBalanceNu: nu("closing_cash_book_balance_nu").notNull().default(0),
+    cashBookWithdrawalsNu: nu("cash_book_withdrawals_nu").notNull().default(0),
+    bankStatementWithdrawalsNu: nu("bank_statement_withdrawals_nu").notNull().default(0),
+    additionsNu: nu("additions_nu").notNull().default(0),
+    deductionsNu: nu("deductions_nu").notNull().default(0),
+    reconciliationTotalNu: nu("reconciliation_total_nu").notNull().default(0),
+    differenceNu: nu("difference_nu").notNull().default(0),
+    status: text("status").notNull().default("Draft"),
+    preparedBy: integer("prepared_by").notNull().references(() => users.id),
+    preparedAt: timestamp("prepared_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: integer("updated_by").notNull().references(() => users.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    closedBy: integer("closed_by").references(() => users.id),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("bank_reconciliations_period_unique").on(table.fiscalYear, table.accountNumber, table.statementMonth),
+    index("bank_reconciliations_fiscal_year_month_idx").on(table.fiscalYear, table.statementMonth),
+    index("bank_reconciliations_status_idx").on(table.status),
+    check("bank_reconciliations_status_check", sql`${table.status} in ('Draft','Reconciled','Closed')`),
+  ],
+);
+
+export const bankReconciliationItems = pgTable(
+  "bank_reconciliation_items",
+  {
+    id: serial("id").primaryKey(),
+    reconciliationId: integer("reconciliation_id")
+      .notNull()
+      .references(() => bankReconciliations.id, { onDelete: "cascade" }),
+    itemType: text("item_type").notNull(),
+    transactionDate: text("transaction_date"),
+    reference: text("reference").notNull().default(""),
+    particulars: text("particulars").notNull(),
+    amountNu: nu("amount_nu").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("bank_reconciliation_items_reconciliation_idx").on(table.reconciliationId, table.itemType),
+    check("bank_reconciliation_items_type_check", sql`${table.itemType} in ('add','less')`),
+  ],
+);
+
+export const monthClosures = pgTable(
+  "month_closures",
+  {
+    id: serial("id").primaryKey(),
+    fiscalYear: text("fiscal_year").notNull(),
+    accountNumber: text("account_number").notNull(),
+    closeMonth: text("close_month").notNull(),
+    status: text("status").notNull().default("Closed"),
+    closedBy: integer("closed_by").notNull().references(() => users.id),
+    closedAt: timestamp("closed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("month_closures_period_unique").on(table.fiscalYear, table.accountNumber, table.closeMonth),
+    index("month_closures_fiscal_year_month_idx").on(table.fiscalYear, table.closeMonth),
+  ],
+);
+
+/* -------------------------------------------------------------------------- */
 /* Relations (used by drizzle's relational queries)                           */
 /* -------------------------------------------------------------------------- */
 

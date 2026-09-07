@@ -38,3 +38,6 @@ export type Bank = (typeof BANKS)[number];
 export function isBank(value: string): value is Bank {
   return (BANKS as readonly string[]).includes(value);
 }
+
+/** The single operating bank account the system reconciles and closes against. */
+export const OPERATING_BANK_ACCOUNT = "110116024748";

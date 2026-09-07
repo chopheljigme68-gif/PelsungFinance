@@ -248,6 +248,49 @@ export type ManagedUser = {
 
 export type PayslipDelivery = { sent: number; failed: number; skipped: number };
 
+export type BankReconciliation = {
+  id: number;
+  fiscalYear: string;
+  accountNumber: string;
+  statementMonth: string;
+  totalFundsReceivedNu: number;
+  closingCashBookBalanceNu: number;
+  cashBookWithdrawalsNu: number;
+  bankStatementWithdrawalsNu: number;
+  additionsNu: number;
+  deductionsNu: number;
+  reconciliationTotalNu: number;
+  differenceNu: number;
+  status: "Draft" | "Reconciled" | "Closed";
+  preparedAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+  preparedByName: string | null;
+  updatedByName: string | null;
+  closedByName: string | null;
+};
+
+export type BankReconciliationItem = {
+  id: number;
+  reconciliationId: number;
+  itemType: "add" | "less";
+  transactionDate: string | null;
+  reference: string;
+  particulars: string;
+  amountNu: number;
+};
+
+export type MonthClosure = {
+  id: number;
+  fiscalYear: string;
+  accountNumber: string;
+  closeMonth: string;
+  status: "Closed";
+  closedBy: number;
+  closedAt: string;
+  closedByName: string | null;
+};
+
 export type AccountingData = {
   activities: Activity[];
   vouchers: Voucher[];
@@ -259,6 +302,9 @@ export type AccountingData = {
   supplierTdsRemittanceRuns: SupplierTdsRemittanceRun[];
   budgetReappropriations: BudgetReappropriation[];
   supplementaryBudgets: SupplementaryBudget[];
+  bankReconciliations: BankReconciliation[];
+  bankReconciliationItems: BankReconciliationItem[];
+  monthClosures: MonthClosure[];
   users: ManagedUser[];
   currentUser: PublicUser;
   fiscalYear: string;

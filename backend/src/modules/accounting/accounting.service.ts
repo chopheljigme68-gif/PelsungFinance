@@ -7,8 +7,11 @@ import { can, publicUser, type SessionUser } from "../auth/auth.service.js";
 import type {
   AccountingData,
   Activity,
+  BankReconciliation,
+  BankReconciliationItem,
   BudgetReappropriation,
   Department,
+  MonthClosure,
   Employee,
   ManagedUser,
   PayrollRemittanceRun,
@@ -37,6 +40,7 @@ export async function loadAccountingData(
 ): Promise<AccountingData> {
   const canViewPayroll = can(user, "view_payroll");
   const canManageUsers = can(user, "manage_users");
+  const canViewAccounts = can(user, "view_reports") || can(user, "create_voucher") || can(user, "record_fund_receipt");
 
   const [
     activities,
@@ -52,6 +56,9 @@ export async function loadAccountingData(
     users,
     budgetReappropriations,
     supplementaryBudgets,
+    bankReconciliations,
+    bankReconciliationItems,
+    monthClosures,
   ] = await Promise.all([
     selectActivities(executor, fiscalYear),
     selectVouchers(executor, fiscalYear),
@@ -66,6 +73,9 @@ export async function loadAccountingData(
     canManageUsers ? selectUsers(executor) : Promise.resolve([]),
     selectBudgetReappropriations(executor, fiscalYear),
     selectSupplementaryBudgets(executor, fiscalYear),
+    canViewAccounts ? selectBankReconciliations(executor, fiscalYear) : Promise.resolve([]),
+    canViewAccounts ? selectBankReconciliationItems(executor, fiscalYear) : Promise.resolve([]),
+    canViewAccounts ? selectMonthClosures(executor, fiscalYear) : Promise.resolve([]),
   ]);
 
   const fiscalYears = [...new Set([...BASE_FISCAL_YEARS, fiscalYear, ...storedFiscalYears])].sort((a, b) =>
@@ -108,6 +118,9 @@ export async function loadAccountingData(
     supplierTdsRemittanceRuns,
     budgetReappropriations,
     supplementaryBudgets,
+    bankReconciliations,
+    bankReconciliationItems,
+    monthClosures,
     users,
     currentUser: publicUser(user),
     fiscalYear,
@@ -540,6 +553,61 @@ async function selectSupplementaryBudgets(executor: DbExecutor, fiscalYear: stri
     ORDER BY supplement.granted_at DESC, supplement.id DESC
   `);
   return rows as unknown as SupplementaryBudget[];
+}
+
+async function selectBankReconciliations(executor: DbExecutor, fiscalYear: string): Promise<BankReconciliation[]> {
+  const rows = await executor.execute<BankReconciliation>(raw`
+    SELECT
+      r.id, r.fiscal_year AS "fiscalYear", r.account_number AS "accountNumber",
+      r.statement_month AS "statementMonth",
+      r.total_funds_received_nu AS "totalFundsReceivedNu",
+      r.closing_cash_book_balance_nu AS "closingCashBookBalanceNu",
+      r.cash_book_withdrawals_nu AS "cashBookWithdrawalsNu",
+      r.bank_statement_withdrawals_nu AS "bankStatementWithdrawalsNu",
+      r.additions_nu AS "additionsNu", r.deductions_nu AS "deductionsNu",
+      r.reconciliation_total_nu AS "reconciliationTotalNu",
+      r.difference_nu AS "differenceNu", r.status,
+      r.prepared_at AS "preparedAt", r.updated_at AS "updatedAt", r.closed_at AS "closedAt",
+      preparer.display_name AS "preparedByName",
+      updater.display_name AS "updatedByName",
+      closer.display_name AS "closedByName"
+    FROM bank_reconciliations r
+    LEFT JOIN users preparer ON preparer.id = r.prepared_by
+    LEFT JOIN users updater ON updater.id = r.updated_by
+    LEFT JOIN users closer ON closer.id = r.closed_by
+    WHERE r.fiscal_year = ${fiscalYear}
+    ORDER BY r.statement_month DESC
+  `);
+  return rows as unknown as BankReconciliation[];
+}
+
+async function selectBankReconciliationItems(executor: DbExecutor, fiscalYear: string): Promise<BankReconciliationItem[]> {
+  const rows = await executor.execute<BankReconciliationItem>(raw`
+    SELECT
+      item.id, item.reconciliation_id AS "reconciliationId", item.item_type AS "itemType",
+      item.transaction_date AS "transactionDate", item.reference, item.particulars,
+      item.amount_nu AS "amountNu"
+    FROM bank_reconciliation_items item
+    JOIN bank_reconciliations r ON r.id = item.reconciliation_id
+    WHERE r.fiscal_year = ${fiscalYear}
+    ORDER BY item.reconciliation_id, item.id
+  `);
+  return rows as unknown as BankReconciliationItem[];
+}
+
+async function selectMonthClosures(executor: DbExecutor, fiscalYear: string): Promise<MonthClosure[]> {
+  const rows = await executor.execute<MonthClosure>(raw`
+    SELECT
+      closure.id, closure.fiscal_year AS "fiscalYear", closure.account_number AS "accountNumber",
+      closure.close_month AS "closeMonth", closure.status,
+      closure.closed_by AS "closedBy", closure.closed_at AS "closedAt",
+      closer.display_name AS "closedByName"
+    FROM month_closures closure
+    LEFT JOIN users closer ON closer.id = closure.closed_by
+    WHERE closure.fiscal_year = ${fiscalYear}
+    ORDER BY closure.close_month DESC
+  `);
+  return rows as unknown as MonthClosure[];
 }
 
 /* -------------------------------------------------------------------------- */

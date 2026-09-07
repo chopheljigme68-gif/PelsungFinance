@@ -7,7 +7,7 @@ import { PasswordChangeModal } from "@/components/account/password-change-modal"
 import { PelsungLogo } from "@/components/ui/primitives";
 import { DEFAULT_FISCAL_YEARS } from "@/lib/fiscal-year";
 import { fiscalYearLabel, initials } from "@/lib/format";
-import { navigationFor, routeTitle } from "@/lib/navigation";
+import { isNavItemActive, navigationFor, routeTitle } from "@/lib/navigation";
 import { useApp } from "@/providers/app-provider";
 
 /**
@@ -67,7 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Link
                   key={entry.href}
                   href={entry.href}
-                  className={pathname.startsWith(entry.href) ? "nav-active" : ""}
+                  className={isNavItemActive(entry, pathname) ? "nav-active" : ""}
                   onClick={() => setMobileNav(false)}
                 >
                   <span aria-hidden="true">{entry.icon}</span>

@@ -24,3 +24,6 @@ export const BANKS = [
 ] as const;
 
 export type Bank = (typeof BANKS)[number];
+
+/** Pelsung's single operating bank account, reconciled and closed each month. */
+export const OPERATING_BANK_ACCOUNT = "110116024748";

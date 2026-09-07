@@ -10,6 +10,7 @@ import { monthEndDate, payrollRemittanceReference, supplierTdsReference } from "
 import { formatVoucherNumber } from "../../domain/vouchers.js";
 import { audit } from "../../lib/audit.js";
 import { conflict } from "../../lib/errors.js";
+import { isAccountingMonthClosed } from "../reconciliation/reconciliation.service.js";
 import { nextVoucherSerial } from "../accounting/accounting.service.js";
 import type { SessionUser } from "../auth/auth.service.js";
 
@@ -37,6 +38,9 @@ export async function finalizePayrollRemittance(
   fiscalYear: string,
   payMonth: string,
 ): Promise<void> {
+  if (await isAccountingMonthClosed(fiscalYear, payMonth)) {
+    throw conflict("Payroll remittance cannot be finalized for a closed accounting month.");
+  }
   await db.transaction(async (tx) => {
     const [existing] = await tx
       .select({ status: payrollRemittanceRuns.status })

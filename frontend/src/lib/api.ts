@@ -141,6 +141,12 @@ export const api = {
   finalizeSupplierTdsRemittance: (body: Record<string, unknown>) =>
     request<AccountingData>("/api/remittance/supplier-tds/finalize", { method: "POST", body }),
 
+  /* Bank reconciliation & month close -------------------------------------- */
+  saveBankReconciliation: (body: Record<string, unknown>) =>
+    request<AccountingData>("/api/reconciliation/bank", { method: "POST", body }),
+  closeMonth: (body: Record<string, unknown>) =>
+    request<AccountingData>("/api/reconciliation/month-close", { method: "POST", body }),
+
   /* Users ------------------------------------------------------------------ */
   createUser: (body: Record<string, unknown>) => request<AccountingData>("/api/users", { method: "POST", body }),
   updateUser: (userId: number, body: Record<string, unknown>) =>

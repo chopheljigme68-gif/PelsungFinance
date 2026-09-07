@@ -6,6 +6,7 @@ import { calculateBhutanMonthlyPayrollTax, calculateHealthContribution } from ".
 import { EMAIL_PATTERN, formatVoucherNumber } from "../../domain/vouchers.js";
 import { audit } from "../../lib/audit.js";
 import { conflict, notFound } from "../../lib/errors.js";
+import { isAccountingMonthClosed } from "../reconciliation/reconciliation.service.js";
 import { loadActivityBalances, nextVoucherSerial } from "../accounting/accounting.service.js";
 import type { SessionUser } from "../auth/auth.service.js";
 import { deleteUnapprovedPayrollVouchers } from "../vouchers/voucher.service.js";
@@ -31,6 +32,10 @@ export async function finalizePayBill(
   input: FinalizePayBillInput,
 ): Promise<void> {
   const department = input.department.trim().normalize("NFC");
+
+  if (await isAccountingMonthClosed(fiscalYear, input.payMonth)) {
+    throw conflict("A pay bill cannot be finalized for a closed accounting month.");
+  }
 
   await db.transaction(async (tx) => {
     const [existing] = await tx
@@ -169,6 +174,10 @@ export type PostPayBillInput = {
  */
 export async function postPayBill(user: SessionUser, fiscalYear: string, input: PostPayBillInput): Promise<void> {
   const department = input.department.trim().normalize("NFC");
+
+  if (await isAccountingMonthClosed(fiscalYear, input.payMonth)) {
+    throw conflict("A pay bill cannot be posted to a closed accounting month.");
+  }
 
   await db.transaction(async (tx) => {
     const [run] = await tx
