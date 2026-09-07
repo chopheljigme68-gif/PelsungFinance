@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { ModalShell } from "@/components/ui/primitives";
+import { ModalShell, PlusIcon } from "@/components/ui/primitives";
 import { ApiError, api } from "@/lib/api";
 import { fiscalYearEndDate, fiscalYearStartDate } from "@/lib/fiscal-year";
 import { currentBhutanDate, fiscalYearLabel, money, roundNu } from "@/lib/format";
@@ -341,8 +341,15 @@ export function VoucherModal({
                     <strong>Allocate this voucher</strong>
                     <span>Select one or more approved activities for the same payee.</span>
                   </div>
-                  <button type="button" onClick={addBudgetLine} disabled={budgetLines.length >= activities.length}>
-                    ＋ Add activity
+                  <button
+                    type="button"
+                    className="icon-button"
+                    onClick={addBudgetLine}
+                    disabled={budgetLines.length >= activities.length}
+                    aria-label="Add activity allocation"
+                    title="Add activity allocation"
+                  >
+                    <PlusIcon />
                   </button>
                 </header>
                 {allocationDetails.map((line, index) => (

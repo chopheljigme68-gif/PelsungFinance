@@ -7,7 +7,7 @@ import {
   SupplementaryBudgetModal,
 } from "@/components/budget/budget-modals";
 import { RouteGuard } from "@/components/shell/route-guard";
-import { Empty, ModuleHero } from "@/components/ui/primitives";
+import { Empty, ModuleHero, PlusIcon } from "@/components/ui/primitives";
 import { fiscalYearLabel, money, timestamp } from "@/lib/format";
 import { useApp } from "@/providers/app-provider";
 import type { AccountingData } from "@/types";
@@ -62,8 +62,13 @@ function BudgetActivities({ data }: { data: AccountingData }) {
               </button>
             )}
             {can("manage_budget") && (
-              <button className="primary-button" onClick={() => setModal("activity")}>
-                ＋ Add budget activity
+              <button
+                className="icon-button"
+                onClick={() => setModal("activity")}
+                aria-label="Add budget activity"
+                title="Add budget activity"
+              >
+                <PlusIcon />
               </button>
             )}
           </>

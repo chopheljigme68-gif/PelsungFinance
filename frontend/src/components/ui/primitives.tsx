@@ -19,6 +19,22 @@ export function PelsungLogo({ className = "" }: { className?: string }) {
   );
 }
 
+/** Crisp white plus for icon-only action buttons (see `.icon-button`). */
+export function PlusIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function Empty({ message }: { message: string }) {
   return (
     <div className="empty-state">

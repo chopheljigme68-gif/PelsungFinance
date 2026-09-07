@@ -719,3 +719,19 @@ button:disabled, .primary-button:disabled, .secondary-button:disabled {
   .accounts-module-grid > a { grid-template-columns: 1fr; }
   .accounts-control-note { align-items: flex-start; flex-direction: column; }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Circular icon button — green fill, white plus (Add budget activity)        */
+/* -------------------------------------------------------------------------- */
+.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; padding: 0; border: 0; border-radius: 10px; color: #fff; background: var(--teal); box-shadow: 0 7px 16px rgba(13,119,104,.18); font-size: 24px; font-weight: 700; line-height: 1; cursor: pointer; transition: background .15s ease, transform .15s ease; }
+.icon-button > span { display: block; margin-top: -2px; }
+.icon-button:hover { background: #08685b; transform: translateY(-1px); }
+.icon-button:active { transform: translateY(0); }
+.icon-button:disabled { opacity: .6; cursor: wait; transform: none; }
+.icon-button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+/* Keep it a fixed circle even where the mobile rule stretches hero buttons. */
+.module-hero-actions .icon-button { width: 42px; }
+/* Same icon button inside the voucher allocations header (overrides the old text-button rule). */
+.voucher-budget-lines > header .icon-button { width: 42px; height: 42px; min-height: 42px; padding: 0; border: 0; border-radius: 10px; color: #fff; background: var(--teal); font-size: 24px; }
+.voucher-budget-lines > header .icon-button:hover { color: #fff; background: #08685b; }
+.voucher-budget-lines > header .icon-button:disabled { opacity: .45; cursor: not-allowed; background: var(--teal); }
