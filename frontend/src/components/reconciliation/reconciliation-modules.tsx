@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Empty } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import { currentBhutanMonth, fiscalYearLabel, fiscalYearMonthOptions, money, payMonthLabel, roundNu, timestamp } from "@/lib/format";
-import { cashBookPositionForMonth, type EditableBankReconciliationItem } from "@/lib/reconciliation";
+import { activeAccountingMonth, cashBookPositionForMonth, type EditableBankReconciliationItem } from "@/lib/reconciliation";
 import { OPERATING_BANK_ACCOUNT } from "@/lib/reference";
 import { useApp } from "@/providers/app-provider";
 import type { AccountingData, BankReconciliation } from "@/types";
@@ -16,13 +16,15 @@ import type { AccountingData, BankReconciliation } from "@/types";
 export function BankReconciliationModule({ data }: { data: AccountingData }) {
   const { fiscalYear, run, can, setNotice } = useApp();
   const canManage = can("manage_bank_reconciliation");
-  const { vouchers, bankReconciliations: reconciliations, bankReconciliationItems: reconciliationItems } = data;
+  const { vouchers, bankReconciliations: reconciliations, bankReconciliationItems: reconciliationItems, monthClosures } = data;
 
+  // Roll forward past closed months: once September is closed, October is active.
+  const activeMonth = useMemo(() => activeAccountingMonth(fiscalYear, monthClosures), [fiscalYear, monthClosures]);
   const months = useMemo(
-    () => fiscalYearMonthOptions(fiscalYear).filter((month) => month.value <= currentBhutanMonth()),
-    [fiscalYear],
+    () => fiscalYearMonthOptions(fiscalYear).filter((month) => month.value <= activeMonth),
+    [fiscalYear, activeMonth],
   );
-  const defaultMonth = months.find((month) => month.value === currentBhutanMonth())?.value ?? months.at(-1)?.value ?? "";
+  const defaultMonth = months.find((month) => month.value === activeMonth)?.value ?? months.at(-1)?.value ?? "";
 
   const itemsForRecord = (record?: BankReconciliation): EditableBankReconciliationItem[] =>
     record
