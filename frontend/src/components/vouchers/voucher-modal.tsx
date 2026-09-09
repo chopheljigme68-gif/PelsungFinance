@@ -4,18 +4,28 @@ import { useId, useState, type FormEvent } from "react";
 import { ModalShell, PlusIcon } from "@/components/ui/primitives";
 import { ApiError, api } from "@/lib/api";
 import { fiscalYearEndDate, fiscalYearStartDate } from "@/lib/fiscal-year";
-import { currentBhutanDate, fiscalYearLabel, money, roundNu } from "@/lib/format";
+import { currentBhutanDate, currentBhutanMonth, fiscalYearLabel, money, roundNu } from "@/lib/format";
+import { activeAccountingMonth } from "@/lib/reconciliation";
 import { BANKS } from "@/lib/reference";
 import { outstandingAdvanceBalance } from "@/lib/totals";
 import { calculateVoucherDeductions, TPN_PATTERN, isPostedStatus, voucherBankEffectNu } from "@/lib/vouchers";
 import { useApp } from "@/providers/app-provider";
-import type { Activity, TpnRegistration, Voucher } from "@/types";
+import type { Activity, MonthClosure, TpnRegistration, Voucher } from "@/types";
 
-const defaultTransactionDate = (fiscalYear: string) => {
+/**
+ * Default voucher date follows the active accounting month, not the calendar
+ * month: once a month is closed, the active month rolls forward (close September
+ * → October), so a new voucher opens in October. When the active month is the
+ * current calendar month, today's date is used.
+ */
+const defaultTransactionDate = (fiscalYear: string, activeMonth: string) => {
   const today = currentBhutanDate();
-  return today >= fiscalYearStartDate(fiscalYear) && today <= fiscalYearEndDate(fiscalYear)
-    ? today
-    : fiscalYearStartDate(fiscalYear);
+  const withinFy = today >= fiscalYearStartDate(fiscalYear) && today <= fiscalYearEndDate(fiscalYear);
+  if (today.slice(0, 7) === activeMonth && withinFy) return today;
+  const firstOfActive = `${activeMonth}-01`;
+  if (firstOfActive < fiscalYearStartDate(fiscalYear)) return fiscalYearStartDate(fiscalYear);
+  if (firstOfActive > fiscalYearEndDate(fiscalYear)) return fiscalYearEndDate(fiscalYear);
+  return firstOfActive;
 };
 
 type BudgetLineDraft = { key: number; activityId: number; amount: string };
@@ -32,16 +42,25 @@ export function VoucherModal({
   activities,
   vouchers,
   tpnRegistrations,
+  monthClosures,
   bankBalanceNu,
   onClose,
 }: {
   activities: Activity[];
   vouchers: Voucher[];
   tpnRegistrations: TpnRegistration[];
+  monthClosures: MonthClosure[];
   bankBalanceNu: number;
   onClose: () => void;
 }) {
   const { fiscalYear, can, run } = useApp();
+  // The active accounting month — rolls forward past any closed months.
+  const activeMonth = activeAccountingMonth(fiscalYear, monthClosures);
+  // When the month has rolled forward (the current month is closed), no date in
+  // a closed month may be selected — the earliest allowed date is the 1st of the
+  // active month; otherwise the whole fiscal year is open for entry.
+  const earliestTransactionDate =
+    activeMonth > currentBhutanMonth() ? `${activeMonth}-01` : fiscalYearStartDate(fiscalYear);
   const canPrepareVoucher = can("create_voucher");
   const canRecordFundReceipt = can("record_fund_receipt");
 
@@ -62,7 +81,7 @@ export function VoucherModal({
   const [tdsRate, setTdsRate] = useState("0");
   const [advanceRecoveryVoucherId, setAdvanceRecoveryVoucherId] = useState("");
   const [advanceRecoveryNu, setAdvanceRecoveryNu] = useState("0");
-  const [date, setDate] = useState(() => defaultTransactionDate(fiscalYear));
+  const [date, setDate] = useState(() => defaultTransactionDate(fiscalYear, activeMonth));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -286,7 +305,7 @@ export function VoucherModal({
             Transaction date
             <input
               type="date"
-              min={fiscalYearStartDate(fiscalYear)}
+              min={earliestTransactionDate}
               max={fiscalYearEndDate(fiscalYear)}
               value={date}
               onChange={(event) => setDate(event.target.value)}

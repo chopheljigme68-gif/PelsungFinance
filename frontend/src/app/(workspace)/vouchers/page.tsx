@@ -6,7 +6,8 @@ import { VoucherModal } from "@/components/vouchers/voucher-modal";
 import { VoucherPrintModal } from "@/components/vouchers/voucher-print-modal";
 import { VoucherTable, voucherDisplayType } from "@/components/vouchers/voucher-parts";
 import { api } from "@/lib/api";
-import { currentBhutanMonth, fiscalYearLabel, fiscalYearMonthOptions, money, payMonthLabel } from "@/lib/format";
+import { fiscalYearLabel, fiscalYearMonthOptions, money, payMonthLabel } from "@/lib/format";
+import { activeAccountingMonth } from "@/lib/reconciliation";
 import { workspaceTotals } from "@/lib/totals";
 import { voucherBankEffectNu } from "@/lib/vouchers";
 import { useApp } from "@/providers/app-provider";
@@ -21,11 +22,13 @@ function VoucherRegister({ data }: { data: AccountingData }) {
   const { vouchers, activities, currentUser } = data;
 
   const voucherPeriods = useMemo(() => fiscalYearMonthOptions(fiscalYear), [fiscalYear]);
-  const currentMonth = currentBhutanMonth();
-  const currentMonthIsInFiscalYear = voucherPeriods.some((period) => period.value === currentMonth);
-  const [selectedVoucherMonth, setSelectedVoucherMonth] = useState(() =>
-    currentMonthIsInFiscalYear ? currentMonth : voucherPeriods[0].value,
+  // The active accounting month rolls forward past any closed months, so once
+  // September is closed the register opens (and allows creating) in October.
+  const activeMonth = useMemo(
+    () => activeAccountingMonth(fiscalYear, data.monthClosures),
+    [fiscalYear, data.monthClosures],
   );
+  const [selectedVoucherMonth, setSelectedVoucherMonth] = useState(() => activeMonth);
   const [entryOpen, setEntryOpen] = useState(false);
   const [printVoucher, setPrintVoucher] = useState<Voucher | null>(null);
 
@@ -80,24 +83,20 @@ function VoucherRegister({ data }: { data: AccountingData }) {
         <div>
           <span className="eyebrow dark">Voucher period</span>
           <h3>Select voucher month</h3>
-          <p>The register defaults to the month of today&apos;s date. Historical months remain available for review.</p>
+          <p>The register opens on the current open accounting month. Closed months remain available for review.</p>
         </div>
         <label>
           Month
           <select value={selectedVoucherMonth} onChange={(event) => setSelectedVoucherMonth(event.target.value)}>
             {voucherPeriods.map((period) => (
-              <option
-                key={period.value}
-                value={period.value}
-                disabled={currentMonthIsInFiscalYear && period.value > currentMonth}
-              >
+              <option key={period.value} value={period.value} disabled={period.value > activeMonth}>
                 {period.label}
-                {period.value === currentMonth ? " · Current month" : ""}
+                {period.value === activeMonth ? " · Current period" : ""}
               </option>
             ))}
           </select>
           <small>
-            Bank reconciliation and month closing are required before voucher processing can move beyond the current
+            Bank reconciliation and month closing are required before voucher processing can move beyond the current open
             month.
           </small>
         </label>
@@ -113,7 +112,7 @@ function VoucherRegister({ data }: { data: AccountingData }) {
             <span className="fy-chip">
               {visibleVouchers.length} VOUCHER{visibleVouchers.length === 1 ? "" : "S"}
             </span>
-            {canCreate && selectedVoucherMonth === currentMonth && (
+            {canCreate && selectedVoucherMonth === activeMonth && (
               <button className="primary-button" onClick={() => setEntryOpen(true)}>
                 ＋ Create voucher
               </button>
@@ -134,6 +133,7 @@ function VoucherRegister({ data }: { data: AccountingData }) {
           activities={activities}
           vouchers={vouchers}
           tpnRegistrations={data.tpnRegistrations}
+          monthClosures={data.monthClosures}
           bankBalanceNu={totals.bankMovement}
           onClose={() => setEntryOpen(false)}
         />
