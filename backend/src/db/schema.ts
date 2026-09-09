@@ -354,6 +354,26 @@ export const supplierTdsRemittanceRuns = pgTable(
 );
 
 /* -------------------------------------------------------------------------- */
+/* TPN registry                                                               */
+/* -------------------------------------------------------------------------- */
+
+export const tpnRegistrations = pgTable(
+  "tpn_registrations",
+  {
+    id: serial("id").primaryKey(),
+    /** Taxpayer number; stored upper-cased and unique. */
+    tpn: text("tpn").notNull(),
+    name: text("name").notNull(),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("tpn_registrations_tpn_unique").on(table.tpn),
+    index("tpn_registrations_name_idx").on(table.name),
+  ],
+);
+
+/* -------------------------------------------------------------------------- */
 /* Vouchers                                                                   */
 /* -------------------------------------------------------------------------- */
 

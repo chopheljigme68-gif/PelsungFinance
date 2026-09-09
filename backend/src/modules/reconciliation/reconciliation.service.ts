@@ -45,6 +45,54 @@ export async function loadCashBookPosition(fiscalYear: string, statementMonth: s
   };
 }
 
+/**
+ * Outstanding statutory liabilities for a month: payroll TDS + health
+ * contribution withheld on posted pay bills but not yet remitted (no Posted
+ * payroll remittance), and supplier TDS withheld on the month's vouchers that
+ * has not been remitted. A month cannot be Reconciled while any remains.
+ */
+export async function loadMonthLiabilities(fiscalYear: string, statementMonth: string) {
+  const [payroll] = (await db.execute(raw`
+    SELECT
+      COALESCE((
+        SELECT SUM(tax_on_salary_nu + health_contribution_nu) FROM payroll_runs
+        WHERE fiscal_year = ${fiscalYear} AND pay_month = ${statementMonth} AND status = 'Posted'
+      ), 0) AS "payrollTdsHcNu",
+      EXISTS(
+        SELECT 1 FROM payroll_remittance_runs
+        WHERE fiscal_year = ${fiscalYear} AND pay_month = ${statementMonth} AND status = 'Posted'
+      ) AS "payrollRemitted"
+  `)) as unknown as { payrollTdsHcNu: number; payrollRemitted: boolean }[];
+
+  const [supplier] = (await db.execute(raw`
+    SELECT COALESCE(SUM(v.tds_nu), 0) AS "supplierTdsNu", COUNT(*)::int AS "count"
+    FROM vouchers v
+    WHERE v.fiscal_year = ${fiscalYear}
+      AND substr(v.transaction_date, 1, 7) = ${statementMonth}
+      AND v.voucher_type = 'Payment'
+      AND v.status IN ('Approved', 'Paid')
+      AND v.tds_nu > 0
+      AND NOT EXISTS(
+        SELECT 1 FROM supplier_tds_remittance_items sti
+        JOIN supplier_tds_remittance_runs r ON r.id = sti.remittance_run_id
+        WHERE sti.voucher_id = v.id AND r.status <> 'Reversed'
+      )
+  `)) as unknown as { supplierTdsNu: number; count: number }[];
+
+  const payrollTdsHcNu = roundNu(Number(payroll?.payrollTdsHcNu ?? 0));
+  const payrollRemitted = Boolean(payroll?.payrollRemitted);
+  const payrollOutstandingNu = payrollTdsHcNu > 0 && !payrollRemitted ? payrollTdsHcNu : 0;
+  const supplierTdsOutstandingNu = roundNu(Number(supplier?.supplierTdsNu ?? 0));
+  const supplierTdsOutstandingCount = Number(supplier?.count ?? 0);
+
+  return {
+    payrollOutstandingNu,
+    supplierTdsOutstandingNu,
+    supplierTdsOutstandingCount,
+    hasOutstanding: payrollOutstandingNu > 0 || supplierTdsOutstandingCount > 0,
+  };
+}
+
 export type ReconciliationItemInput = {
   itemType: string;
   transactionDate?: string;
@@ -120,6 +168,26 @@ export async function saveBankReconciliation(
 
   if (reconcile && differenceNu !== 0) {
     throw conflict("The statement cannot be reconciled until the difference is zero.", { differenceNu });
+  }
+
+  // All statutory liabilities for the month must be paid off before reconciling.
+  if (reconcile) {
+    const liabilities = await loadMonthLiabilities(fiscalYear, statementMonth);
+    if (liabilities.hasOutstanding) {
+      const parts = [
+        liabilities.payrollOutstandingNu > 0
+          ? `remit payroll TDS & health contribution of Nu. ${liabilities.payrollOutstandingNu.toFixed(2)}`
+          : "",
+        liabilities.supplierTdsOutstandingCount > 0
+          ? `remit supplier TDS on ${liabilities.supplierTdsOutstandingCount} voucher${liabilities.supplierTdsOutstandingCount === 1 ? "" : "s"} (Nu. ${liabilities.supplierTdsOutstandingNu.toFixed(2)})`
+          : "",
+      ].filter(Boolean);
+      throw conflict(`The statement cannot be reconciled until all liabilities are paid off: ${parts.join("; ")}.`, {
+        payrollOutstandingNu: liabilities.payrollOutstandingNu,
+        supplierTdsOutstandingNu: liabilities.supplierTdsOutstandingNu,
+        supplierTdsOutstandingCount: liabilities.supplierTdsOutstandingCount,
+      });
+    }
   }
 
   const savedId = await db.transaction(async (tx) => {

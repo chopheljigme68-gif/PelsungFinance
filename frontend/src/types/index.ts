@@ -22,7 +22,8 @@ export type Permission =
   | "manage_departments"
   | "undo_payroll"
   | "manage_bank_reconciliation"
-  | "manage_month_close";
+  | "manage_month_close"
+  | "manage_tpn";
 
 export type AppUser = {
   id: number;
@@ -350,6 +351,14 @@ export type MonthClosure = {
   closedByName: string | null;
 };
 
+export type TpnRegistration = {
+  id: number;
+  tpn: string;
+  name: string;
+  createdByName: string | null;
+  createdAt: string;
+};
+
 export type AccountingData = {
   activities: Activity[];
   vouchers: Voucher[];
@@ -364,6 +373,7 @@ export type AccountingData = {
   bankReconciliations: BankReconciliation[];
   bankReconciliationItems: BankReconciliationItem[];
   monthClosures: MonthClosure[];
+  tpnRegistrations: TpnRegistration[];
   users: ManagedUser[];
   currentUser: AppUser;
   fiscalYear: string;

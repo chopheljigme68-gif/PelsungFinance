@@ -14,6 +14,7 @@ import { audit } from "../../lib/audit.js";
 import { EmailDeliveryError, sendPayrollPayslipEmail } from "../../lib/email.js";
 import { PG_UNIQUE_VIOLATION, badRequest, conflict, forbidden, isPostgresError } from "../../lib/errors.js";
 import { isAccountingMonthClosed } from "../reconciliation/reconciliation.service.js";
+import { isTpnRegistered } from "../tpn/tpn.service.js";
 import { logger } from "../../lib/logger.js";
 import { loadActivityBalances, loadOutstandingAdvance, nextVoucherSerial } from "../accounting/accounting.service.js";
 import type { PayslipDelivery } from "../accounting/accounting.types.js";
@@ -101,6 +102,10 @@ export async function createVoucher(
   const tpn = (input.tpn ?? "").trim().toLocaleUpperCase();
   if (requiresTpn && !(tpn.length > 0 && tpn.length <= 30 && TPN_PATTERN.test(tpn))) {
     throw badRequest("Enter the payee's TPN before submitting a voucher with 2% or 5% TDS.");
+  }
+  // The TPN on a TDS voucher must come from the registry (registered-only).
+  if (requiresTpn && !(await isTpnRegistered(tpn))) {
+    throw badRequest(`TPN ${tpn} is not registered. Register it under Accounts → TPN Registration first.`);
   }
 
   // A closed accounting month is locked to new postings.

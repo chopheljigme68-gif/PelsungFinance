@@ -291,6 +291,14 @@ export type MonthClosure = {
   closedByName: string | null;
 };
 
+export type TpnRegistration = {
+  id: number;
+  tpn: string;
+  name: string;
+  createdByName: string | null;
+  createdAt: string;
+};
+
 export type AccountingData = {
   activities: Activity[];
   vouchers: Voucher[];
@@ -305,6 +313,7 @@ export type AccountingData = {
   bankReconciliations: BankReconciliation[];
   bankReconciliationItems: BankReconciliationItem[];
   monthClosures: MonthClosure[];
+  tpnRegistrations: TpnRegistration[];
   users: ManagedUser[];
   currentUser: PublicUser;
   fiscalYear: string;

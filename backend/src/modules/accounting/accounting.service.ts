@@ -20,6 +20,7 @@ import type {
   PayrollRunItem,
   SupplementaryBudget,
   SupplierTdsRemittanceRun,
+  TpnRegistration,
   Voucher,
   VoucherBudgetLine,
 } from "./accounting.types.js";
@@ -76,6 +77,7 @@ export async function loadAccountingData(
     bankReconciliations,
     bankReconciliationItems,
     monthClosures,
+    tpnRegistrations,
   ] = await Promise.all([
     selectActivities(executor, fiscalYear),
     selectVouchers(executor, fiscalYear),
@@ -97,6 +99,7 @@ export async function loadAccountingData(
       ? optionalList("bankReconciliationItems", selectBankReconciliationItems(executor, fiscalYear))
       : Promise.resolve([]),
     canViewAccounts ? optionalList("monthClosures", selectMonthClosures(executor, fiscalYear)) : Promise.resolve([]),
+    canViewAccounts ? optionalList("tpnRegistrations", selectTpnRegistrations(executor)) : Promise.resolve([]),
   ]);
 
   const fiscalYears = [...new Set([...BASE_FISCAL_YEARS, fiscalYear, ...storedFiscalYears])].sort((a, b) =>
@@ -142,6 +145,7 @@ export async function loadAccountingData(
     bankReconciliations,
     bankReconciliationItems,
     monthClosures,
+    tpnRegistrations,
     users,
     currentUser: publicUser(user),
     fiscalYear,
@@ -629,6 +633,17 @@ async function selectMonthClosures(executor: DbExecutor, fiscalYear: string): Pr
     ORDER BY closure.close_month DESC
   `);
   return rows as unknown as MonthClosure[];
+}
+
+/** The TPN registry is global (not fiscal-year scoped) — it feeds the voucher TDS picker. */
+async function selectTpnRegistrations(executor: DbExecutor): Promise<TpnRegistration[]> {
+  const rows = await executor.execute<TpnRegistration>(raw`
+    SELECT reg.id, reg.tpn, reg.name, reg.created_at AS "createdAt", creator.display_name AS "createdByName"
+    FROM tpn_registrations reg
+    LEFT JOIN users creator ON creator.id = reg.created_by
+    ORDER BY reg.name ASC, reg.tpn ASC
+  `);
+  return rows as unknown as TpnRegistration[];
 }
 
 /* -------------------------------------------------------------------------- */

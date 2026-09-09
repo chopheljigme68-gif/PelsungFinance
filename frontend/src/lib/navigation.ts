@@ -17,9 +17,10 @@ export type NavigationGroup = { title: string; items: NavigationItem[] };
 const item = {
   dashboard: { label: "Dashboard", href: "/dashboard", icon: "⌂" },
   budget: { label: "Budget Activities", href: "/budget", icon: "▤" },
-  accounts: { label: "Accounts", href: "/accounts", icon: "▦", match: ["/vouchers", "/reconciliation"] },
+  accounts: { label: "Accounts", href: "/accounts", icon: "▦", match: ["/vouchers", "/reconciliation", "/tpn-registration"] },
   vouchers: { label: "Vouchers", href: "/vouchers", icon: "◫" },
   reconciliation: { label: "Bank Reconciliation", href: "/reconciliation", icon: "⇌" },
+  tpnRegistration: { label: "TPN Registration", href: "/tpn-registration", icon: "◈" },
   tds: { label: "TDS Remittance", href: "/tds-remittance", icon: "%" },
   payroll: { label: "Payroll", href: "/payroll", icon: "Nu" },
   process: { label: "Process", href: "/process", icon: "◷", match: ["/month-close"] },

@@ -29,6 +29,13 @@
       "when": 1788400000000,
       "tag": "0003_reconciliation_monthclose",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788500000000,
+      "tag": "0004_tpn_registrations",
+      "breakpoints": true
     }
   ]
 }

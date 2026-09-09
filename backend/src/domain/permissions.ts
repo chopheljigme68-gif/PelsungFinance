@@ -34,11 +34,12 @@ export const PERMISSIONS = [
   "undo_payroll",
   "manage_bank_reconciliation",
   "manage_month_close",
+  "manage_tpn",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 export const rolePermissions: Record<AppRole, Permission[]> = {
-  agency_user: ["create_voucher", "view_reports", "view_payroll", "manage_payroll", "add_employee", "manage_bank_reconciliation", "manage_month_close"],
+  agency_user: ["create_voucher", "view_reports", "view_payroll", "manage_payroll", "add_employee", "manage_bank_reconciliation", "manage_month_close", "manage_tpn"],
   agency_admin: [
     "create_voucher",
     "record_fund_receipt",
@@ -57,6 +58,7 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "undo_payroll",
     "manage_bank_reconciliation",
     "manage_month_close",
+    "manage_tpn",
   ],
   approving_authority: [
     "record_fund_receipt",
@@ -71,6 +73,7 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "undo_payroll",
     "manage_bank_reconciliation",
     "manage_month_close",
+    "manage_tpn",
   ],
   viewer: ["view_budget", "view_reports", "view_payroll"],
 };

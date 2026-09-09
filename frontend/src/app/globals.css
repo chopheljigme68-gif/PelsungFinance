@@ -735,3 +735,20 @@ button:disabled, .primary-button:disabled, .secondary-button:disabled {
 .voucher-budget-lines > header .icon-button { width: 42px; height: 42px; min-height: 42px; padding: 0; border: 0; border-radius: 10px; color: #fff; background: var(--teal); font-size: 24px; }
 .voucher-budget-lines > header .icon-button:hover { color: #fff; background: #08685b; }
 .voucher-budget-lines > header .icon-button:disabled { opacity: .45; cursor: not-allowed; background: var(--teal); }
+
+/* -------------------------------------------------------------------------- */
+/* Searchable approved-activity picker (voucher) + TPN hint                   */
+/* -------------------------------------------------------------------------- */
+.activity-search { position: relative; }
+.activity-search-input { width: 100%; }
+.activity-search-options { position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; max-height: 240px; overflow-y: auto; border: 1px solid #c7d4d0; border-radius: 7px; background: #fff; box-shadow: 0 14px 34px rgba(8,31,53,.16); }
+.activity-search-options > li { margin: 0; }
+.activity-search-options button { width: 100%; display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 8px; padding: 8px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); font-size: 12.5px; text-align: left; cursor: pointer; }
+.activity-search-options button:hover:not(:disabled) { background: var(--teal-soft); }
+.activity-search-options button.is-selected { background: #eaf3f7; }
+.activity-search-options button:disabled { opacity: .5; cursor: not-allowed; }
+.activity-search-options button strong { color: var(--teal); font-weight: 800; white-space: nowrap; }
+.activity-search-options button span { min-width: 0; }
+.activity-search-options button em { color: var(--muted); font-style: normal; }
+.activity-search-empty { padding: 10px 9px; color: var(--muted); font-size: 12px; }
+.voucher-tpn-hint { display: block; margin-top: 4px; color: var(--berry); font-size: 11px; }

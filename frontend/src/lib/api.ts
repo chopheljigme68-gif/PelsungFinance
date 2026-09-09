@@ -102,6 +102,7 @@ export const api = {
       bankReconciliations: data.bankReconciliations ?? [],
       bankReconciliationItems: data.bankReconciliationItems ?? [],
       monthClosures: data.monthClosures ?? [],
+      tpnRegistrations: data.tpnRegistrations ?? [],
     } satisfies AccountingData;
   },
 
@@ -163,6 +164,12 @@ export const api = {
     request<AccountingData>("/api/reconciliation/bank", { method: "POST", body }),
   closeMonth: (body: Record<string, unknown>) =>
     request<AccountingData>("/api/reconciliation/month-close", { method: "POST", body }),
+
+  /* TPN registry ----------------------------------------------------------- */
+  addTpnRegistration: (body: { tpn: string; name: string }) =>
+    request<AccountingData>("/api/tpn", { method: "POST", body }),
+  deleteTpnRegistration: (tpnId: number) =>
+    request<AccountingData>(`/api/tpn/${tpnId}`, { method: "DELETE" }),
 
   /* Users ------------------------------------------------------------------ */
   createUser: (body: Record<string, unknown>) => request<AccountingData>("/api/users", { method: "POST", body }),

@@ -1,7 +1,7 @@
 /**
  * End-to-end smoke run against a live server + database.
  *
- * Exercises the full accounting cycle: sign in, forced password change, budget
+ * Exercises the full accounting cycle: sign in, password change, budget
  * activity, supplementary budget, re-appropriation, voucher creation and
  * approval, advance + recovery, department/employee setup, pay bill finalize →
  * post → approve (payslips), salary TDS/HC remittance, supplier TDS remittance,
@@ -75,17 +75,18 @@ async function main() {
   if (!cookie) await call("POST", "/api/auth/login", { username: ADMIN, password: NEW_PASSWORD });
 
   if (login.payload.user?.mustChangePassword) {
-    const blocked = await call("POST", "/api/budget/activities", {
+    // A temporary password is no longer a gate: transactions work immediately.
+    const allowed = await call("POST", "/api/budget/activities", {
       fiscalYear: FY,
-      category: "Blocked",
+      category: "Administration",
       financing: "HMS",
       obc: "99.99",
-      activity: "Blocked before password change",
+      activity: "Transacting on a temporary password",
       budgetType: "Current",
       approvedNu: 1000,
-      brief: "Should not be accepted",
+      brief: "Accepted without a password change",
     });
-    check("transactions blocked until the temporary password is changed", blocked.status === 428);
+    check("a temporary password does not block transactions", allowed.ok, allowed.payload.error);
 
     const changed = await call("POST", "/api/auth/password", {
       currentPassword: SEED_PASSWORD,
@@ -171,6 +172,24 @@ async function main() {
     reason: "Smoke test over-transfer",
   });
   check("over-transfer is refused with the available balance", overTransfer.status === 409 && typeof overTransfer.payload.availableBalanceNu === "number");
+
+  console.log("\nTPN registry");
+  const tpnRegistered = await call("POST", "/api/tpn", { tpn: "TPN-001", name: "Smoke Test Supplier" });
+  check("TPN is registered", tpnRegistered.status === 201, tpnRegistered.payload.error);
+  check("registered TPN appears in the snapshot", (tpnRegistered.payload.tpnRegistrations ?? []).some((t) => t.tpn === "TPN-001"));
+  const duplicateTpn = await call("POST", "/api/tpn", { tpn: "TPN-001", name: "Duplicate" });
+  check("duplicate TPN is refused", duplicateTpn.status === 409, String(duplicateTpn.status));
+  const unregisteredTpnVoucher = await call("POST", "/api/vouchers", {
+    fiscalYear: FY,
+    voucherType: "Payment",
+    payee: "Unregistered Supplier",
+    tpn: "TPN-999",
+    description: "Unregistered TPN on a TDS voucher",
+    tdsRate: 2,
+    transactionDate: DATE,
+    budgetLines: [{ activityId: activity.id, amountNu: 1000 }],
+  });
+  check("a TDS voucher with an unregistered TPN is refused", unregisteredTpnVoucher.status === 400, String(unregisteredTpnVoucher.status));
 
   console.log("\nVouchers");
   const voucher = await call("POST", "/api/vouchers", {
@@ -471,7 +490,7 @@ async function main() {
   });
   check("user is created", newUser.status === 201, newUser.payload.error);
   const managed = newUser.payload.users.find((item) => item.username === newUserEmail);
-  check("new user must change the password", managed.mustChangePassword === true);
+  check("new user is flagged as holding a temporary password", managed.mustChangePassword === true);
   check("email failure is reported without losing the user", typeof newUser.payload.actionNotice === "string" || newUser.payload.actionNotice === undefined);
 
   const roleChanged = await call("PATCH", `/api/users/${managed.id}/role`, { fiscalYear: FY, role: "viewer" });

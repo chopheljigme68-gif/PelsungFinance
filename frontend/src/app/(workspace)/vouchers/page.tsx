@@ -133,6 +133,7 @@ function VoucherRegister({ data }: { data: AccountingData }) {
         <VoucherModal
           activities={activities}
           vouchers={vouchers}
+          tpnRegistrations={data.tpnRegistrations}
           bankBalanceNu={totals.bankMovement}
           onClose={() => setEntryOpen(false)}
         />

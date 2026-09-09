@@ -17,6 +17,7 @@ export function AccountsHub({ data }: { data: AccountingData }) {
     ["Reconciled", "Closed"].includes(item.status),
   ).length;
   const draftMonths = data.bankReconciliations.filter((item) => item.status === "Draft").length;
+  const tpnCount = data.tpnRegistrations.length;
 
   return (
     <>
@@ -53,6 +54,17 @@ export function AccountsHub({ data }: { data: AccountingData }) {
             <p>Match approved cash-book transactions with the monthly bank statement and record Annex adjustments.</p>
             <b>
               {reconciledMonths} reconciled · {draftMonths} draft →
+            </b>
+          </div>
+        </Link>
+        <Link href="/tpn-registration">
+          <span className="accounts-module-icon">TPN</span>
+          <div>
+            <small>Tax registry</small>
+            <strong>TPN Registration</strong>
+            <p>Register taxpayer numbers and names, then select them on vouchers that carry 2% or 5% TDS.</p>
+            <b>
+              {tpnCount} registered TPN{tpnCount === 1 ? "" : "s"} →
             </b>
           </div>
         </Link>

@@ -9,6 +9,7 @@ import { budgetRouter } from "../modules/budget/budget.routes.js";
 import { payrollRouter } from "../modules/payroll/payroll.routes.js";
 import { reconciliationRouter } from "../modules/reconciliation/reconciliation.routes.js";
 import { remittanceRouter } from "../modules/remittance/remittance.routes.js";
+import { tpnRouter } from "../modules/tpn/tpn.routes.js";
 import { userRouter } from "../modules/users/user.routes.js";
 import { voucherRouter } from "../modules/vouchers/voucher.routes.js";
 
@@ -53,4 +54,5 @@ apiRouter.use("/vouchers", voucherRouter);
 apiRouter.use("/payroll", payrollRouter);
 apiRouter.use("/reconciliation", reconciliationRouter);
 apiRouter.use("/remittance", remittanceRouter);
+apiRouter.use("/tpn", tpnRouter);
 apiRouter.use("/users", userRouter);

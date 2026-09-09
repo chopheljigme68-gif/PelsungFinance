@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { ModalShell, PlusIcon } from "@/components/ui/primitives";
 import { ApiError, api } from "@/lib/api";
 import { fiscalYearEndDate, fiscalYearStartDate } from "@/lib/fiscal-year";
@@ -9,7 +9,7 @@ import { BANKS } from "@/lib/reference";
 import { outstandingAdvanceBalance } from "@/lib/totals";
 import { calculateVoucherDeductions, TPN_PATTERN, isPostedStatus, voucherBankEffectNu } from "@/lib/vouchers";
 import { useApp } from "@/providers/app-provider";
-import type { Activity, Voucher } from "@/types";
+import type { Activity, TpnRegistration, Voucher } from "@/types";
 
 const defaultTransactionDate = (fiscalYear: string) => {
   const today = currentBhutanDate();
@@ -31,11 +31,13 @@ type BudgetLineDraft = { key: number; activityId: number; amount: string };
 export function VoucherModal({
   activities,
   vouchers,
+  tpnRegistrations,
   bankBalanceNu,
   onClose,
 }: {
   activities: Activity[];
   vouchers: Voucher[];
+  tpnRegistrations: TpnRegistration[];
   bankBalanceNu: number;
   onClose: () => void;
 }) {
@@ -104,7 +106,10 @@ export function VoucherModal({
 
   const normalizedTpn = tpn.trim().toLocaleUpperCase();
   const requiresTpn = isPayment && [2, 5].includes(Number(tdsRate));
-  const validTpn = !requiresTpn || (normalizedTpn.length <= 30 && TPN_PATTERN.test(normalizedTpn));
+  // Registered-only: a TDS voucher's TPN must come from the registry.
+  const registeredTpns = tpnRegistrations;
+  const isRegisteredTpn = registeredTpns.some((registration) => registration.tpn === normalizedTpn);
+  const validTpn = !requiresTpn || (TPN_PATTERN.test(normalizedTpn) && isRegisteredTpn);
 
   const currentVoucherBankEffectNu = voucherBankEffectNu({
     voucherType,
@@ -156,7 +161,11 @@ export function VoucherModal({
       return;
     }
     if (requiresTpn && !validTpn) {
-      setError("Enter the payee's TPN before submitting a voucher with 2% or 5% TDS.");
+      setError(
+        registeredTpns.length
+          ? "Select a registered TPN for the payee before submitting a voucher with 2% or 5% TDS."
+          : "No TPN is registered yet. Register the payee under Accounts → TPN Registration first.",
+      );
       return;
     }
     if (
@@ -357,21 +366,16 @@ export function VoucherModal({
                     <span className="voucher-budget-line-number">{index + 1}</span>
                     <label>
                       Approved budget activity
-                      <select
+                      <ActivitySearchSelect
+                        activities={activities}
                         value={line.activityId}
-                        onChange={(event) => updateBudgetLine(line.key, { activityId: Number(event.target.value) })}
-                        required
-                      >
-                        {activities.map((item) => (
-                          <option
-                            key={item.id}
-                            value={item.id}
-                            disabled={budgetLines.some((other) => other.key !== line.key && other.activityId === item.id)}
-                          >
-                            {item.obc} · {item.activity} ({item.category})
-                          </option>
-                        ))}
-                      </select>
+                        disabledIds={
+                          new Set(
+                            budgetLines.filter((other) => other.key !== line.key).map((other) => other.activityId),
+                          )
+                        }
+                        onChange={(activityId) => updateBudgetLine(line.key, { activityId })}
+                      />
                     </label>
                     <label>
                       Allocated amount (Nu.)
@@ -540,16 +544,29 @@ export function VoucherModal({
               {requiresTpn && (
                 <label>
                   Payee TPN <small>Required for 2% and 5% TDS</small>
-                  <input
-                    maxLength={30}
-                    value={tpn}
+                  <select
+                    value={normalizedTpn}
                     onChange={(event) => {
-                      setTpn(event.target.value.toLocaleUpperCase().replace(/[^A-Z0-9./-]/g, "").slice(0, 30));
+                      setTpn(event.target.value);
                       setError("");
                     }}
-                    placeholder="Enter taxpayer number"
+                    disabled={!registeredTpns.length}
                     required
-                  />
+                  >
+                    <option value="" disabled>
+                      {registeredTpns.length ? "Select a registered TPN…" : "No TPN registered yet"}
+                    </option>
+                    {registeredTpns.map((registration) => (
+                      <option key={registration.id} value={registration.tpn}>
+                        {registration.tpn} — {registration.name}
+                      </option>
+                    ))}
+                  </select>
+                  {!registeredTpns.length && (
+                    <small className="voucher-tpn-hint">
+                      Register the payee under Accounts → TPN Registration to enable TDS.
+                    </small>
+                  )}
                 </label>
               )}
               <label>
@@ -659,5 +676,97 @@ export function VoucherModal({
         </footer>
       </form>
     </ModalShell>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Searchable approved-activity picker                                        */
+/* -------------------------------------------------------------------------- */
+
+function ActivitySearchSelect({
+  activities,
+  value,
+  disabledIds,
+  onChange,
+}: {
+  activities: Activity[];
+  value: number;
+  disabledIds: Set<number>;
+  onChange: (activityId: number) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+
+  const labelFor = (activity: Activity) => `${activity.obc} · ${activity.activity} (${activity.category})`;
+  const selected = activities.find((activity) => activity.id === value);
+  const needle = query.trim().toLocaleLowerCase();
+  const matches = needle
+    ? activities.filter((activity) => labelFor(activity).toLocaleLowerCase().includes(needle))
+    : activities;
+
+  const choose = (activity: Activity) => {
+    onChange(activity.id);
+    setQuery("");
+    setOpen(false);
+  };
+
+  return (
+    <div
+      className="activity-search"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          setOpen(false);
+          setQuery("");
+        }
+      }}
+    >
+      <input
+        type="text"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        className="activity-search-input"
+        placeholder="Search OBC, activity or programme…"
+        value={open ? query : selected ? labelFor(selected) : ""}
+        onFocus={() => setOpen(true)}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setOpen(true);
+        }}
+      />
+      {open && (
+        <ul className="activity-search-options" role="listbox" id={listId}>
+          {matches.length ? (
+            matches.map((activity) => {
+              const isSelected = activity.id === value;
+              const isDisabled = disabledIds.has(activity.id) && !isSelected;
+              return (
+                <li key={activity.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    className={isSelected ? "is-selected" : ""}
+                    disabled={isDisabled}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => !isDisabled && choose(activity)}
+                  >
+                    <strong>{activity.obc}</strong>
+                    <span>
+                      {activity.activity} <em>({activity.category})</em>
+                      {isDisabled && " · already allocated"}
+                    </span>
+                  </button>
+                </li>
+              );
+            })
+          ) : (
+            <li className="activity-search-empty">No approved activity matches “{query}”.</li>
+          )}
+        </ul>
+      )}
+    </div>
   );
 }
