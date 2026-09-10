@@ -77,6 +77,7 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "view_payroll",
     "manage_payroll",
     "add_employee",
+    "manage_budget",
     "reappropriate_budget",
     "supplementary_budget",
     "undo_payroll",
@@ -102,6 +103,6 @@ export const roleDescriptions: Record<AppRole, string> = {
   agency_admin:
     "Add, supplement and re-appropriate budget activities · Prepare and approve vouchers · Record fund receipts · Manage users and departments · Payroll · Reports",
   approving_authority:
-    "Approve vouchers · Record fund receipts · Manage employees and payroll · View reports · Supplement and re-appropriate budgets",
+    "Approve vouchers · Record fund receipts · Manage employees and payroll · View reports · Add, supplement and re-appropriate budgets",
   viewer: "Read-only Dashboard · Budget Activities · Payroll · Reports",
 };
