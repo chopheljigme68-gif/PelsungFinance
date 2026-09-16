@@ -10,6 +10,11 @@ import type { NextConfig } from "next";
 const BACKEND_ORIGIN = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/+$/, "");
 
 const nextConfig: NextConfig = {
+  // Self-contained server bundle for the Docker image (`node server.js`).
+  // Harmless locally: `next dev` and `next start` are unaffected.
+  output: "standalone",
+  // The repo root also has a package.json; trace from this package only.
+  outputFileTracingRoot: process.cwd(),
   reactStrictMode: true,
   poweredByHeader: false,
   eslint: { ignoreDuringBuilds: false },

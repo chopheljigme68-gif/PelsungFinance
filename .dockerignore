@@ -1,0 +1,12 @@
+**/node_modules
+**/.next
+**/dist
+**/.git
+**/.env
+**/.env.*
+!**/.env.example
+**/npm-debug.log*
+**/*.tsbuildinfo
+**/.DS_Store
+*.sql
+*.zip
