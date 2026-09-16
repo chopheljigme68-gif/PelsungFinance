@@ -2,7 +2,7 @@
   "name": "pelsung-finance-frontend",
   "version": "1.0.0",
   "private": true,
-  "description": "Pelsung Accounting Management System \u2014 Next.js workspace",
+  "description": "Pelsung Accounting Management System — Next.js workspace",
   "engines": {
     "node": ">=20.11.0"
   },
@@ -20,6 +20,7 @@
     "react-dom": "19.0.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.2.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.7",
@@ -27,7 +28,6 @@
     "eslint": "^9.18.0",
     "eslint-config-next": "15.5.24",
     "tailwindcss": "^4.0.0",
-    "typescript": "^5.7.3",
-    "@eslint/eslintrc": "^3.2.0"
+    "typescript": "^5.7.3"
   }
 }

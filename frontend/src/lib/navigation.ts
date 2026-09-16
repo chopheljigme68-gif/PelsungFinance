@@ -1,3 +1,4 @@
+import type { IconName } from "@/components/ui/nav-icons";
 import type { AppRole } from "@/types";
 
 /**
@@ -6,7 +7,7 @@ import type { AppRole } from "@/types";
  * Reconciliation, Month Close) keep their own routes, so the hub stays active
  * while the user is inside one of them.
  */
-export type NavigationItem = { label: string; href: string; icon: string; match?: string[] };
+export type NavigationItem = { label: string; href: string; icon: IconName; match?: string[] };
 export type NavigationGroup = { title: string; items: NavigationItem[] };
 
 /**
@@ -15,20 +16,20 @@ export type NavigationGroup = { title: string; items: NavigationItem[] };
  * (Vouchers, Bank Reconciliation, Month Close) so the top bar reads correctly.
  */
 const item = {
-  dashboard: { label: "Dashboard", href: "/dashboard", icon: "⌂" },
-  budget: { label: "Budget Activities", href: "/budget", icon: "▤" },
-  accounts: { label: "Accounts", href: "/accounts", icon: "▦", match: ["/vouchers", "/reconciliation", "/tpn-registration"] },
-  vouchers: { label: "Vouchers", href: "/vouchers", icon: "◫" },
-  reconciliation: { label: "Bank Reconciliation", href: "/reconciliation", icon: "⇌" },
-  tpnRegistration: { label: "TPN Registration", href: "/tpn-registration", icon: "◈" },
-  tds: { label: "TDS Remittance", href: "/tds-remittance", icon: "%" },
-  payroll: { label: "Payroll", href: "/payroll", icon: "Nu" },
-  process: { label: "Process", href: "/process", icon: "◷", match: ["/month-close"] },
-  monthClose: { label: "Month Close", href: "/month-close", icon: "▣" },
-  approvals: { label: "Approval Queue", href: "/approvals", icon: "✓" },
-  ledger: { label: "General Ledger", href: "/ledger", icon: "≡" },
-  reports: { label: "Reports", href: "/reports", icon: "◔" },
-  users: { label: "User Management", href: "/users", icon: "◇" },
+  dashboard: { label: "Dashboard", href: "/dashboard", icon: "dashboard" },
+  budget: { label: "Budget Activities", href: "/budget", icon: "budget" },
+  accounts: { label: "Accounts", href: "/accounts", icon: "accounts", match: ["/vouchers", "/reconciliation", "/tpn-registration"] },
+  vouchers: { label: "Vouchers", href: "/vouchers", icon: "vouchers" },
+  reconciliation: { label: "Bank Reconciliation", href: "/reconciliation", icon: "reconciliation" },
+  tpnRegistration: { label: "TPN Registration", href: "/tpn-registration", icon: "tpn" },
+  tds: { label: "TDS Remittance", href: "/tds-remittance", icon: "tds" },
+  payroll: { label: "Payroll", href: "/payroll", icon: "payroll" },
+  process: { label: "Process", href: "/process", icon: "process", match: ["/month-close"] },
+  monthClose: { label: "Month Close", href: "/month-close", icon: "monthClose" },
+  approvals: { label: "Approval Queue", href: "/approvals", icon: "approvals" },
+  ledger: { label: "General Ledger", href: "/ledger", icon: "ledger" },
+  reports: { label: "Reports", href: "/reports", icon: "reports" },
+  users: { label: "User Management", href: "/users", icon: "users" },
 } as const satisfies Record<string, NavigationItem>;
 
 /** The menu each role sees; routes are also guarded by permission. */

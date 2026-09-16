@@ -58,8 +58,7 @@ await run(
 `run` calls the API, stores the refreshed snapshot the server returns, shows the
 notice, and returns `true`/`false` so a modal can stay open on failure. Because
 the server answers with the full snapshot, there is no optimistic update to
-reconcile and no screen can drift from the ledger. A `401` returns to sign-in
-and a `428` opens the password gate automatically.
+reconcile and no screen can drift from the ledger. A `401` returns to sign-in.
 
 ## Design
 

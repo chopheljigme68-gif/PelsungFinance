@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { PasswordChangeModal } from "@/components/account/password-change-modal";
+import { Icon } from "@/components/ui/nav-icons";
 import { PelsungLogo } from "@/components/ui/primitives";
 import { DEFAULT_FISCAL_YEARS } from "@/lib/fiscal-year";
 import { fiscalYearLabel, initials } from "@/lib/format";
@@ -70,7 +71,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                   className={isNavItemActive(entry, pathname) ? "nav-active" : ""}
                   onClick={() => setMobileNav(false)}
                 >
-                  <span aria-hidden="true">{entry.icon}</span>
+                  <span className="nav-icon" aria-hidden="true">
+                    <Icon name={entry.icon} />
+                  </span>
                   {entry.label}
                   {entry.href === "/approvals" && pendingApprovals > 0 && <b>{pendingApprovals}</b>}
                 </Link>
@@ -86,10 +89,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           </span>
           <div className="account-actions">
             <button aria-label="Change password" title="Change password" onClick={() => setPasswordModalOpen(true)}>
-              ⚙
+              <Icon name="settings" />
             </button>
             <button aria-label="Sign out" title="Sign out" onClick={() => void signOut()}>
-              ↪
+              <Icon name="signout" />
             </button>
           </div>
         </div>
@@ -98,7 +101,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <section className="workspace">
         <header className="topbar">
           <button className="mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(!mobileNav)}>
-            ☰
+            <Icon name="menu" />
           </button>
           <div>
             <span className="breadcrumb">
