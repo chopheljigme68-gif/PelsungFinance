@@ -3,13 +3,15 @@ import type { NextConfig } from "next";
 /**
  * The browser always talks to the app's own origin. Next.js proxies every
  * `/api/*` request to the backend server-side (below), so the session cookie is
- * set and sent first-party — it needs no `SameSite=None`, and no browser (Safari
- * included) treats it as a blocked third-party cookie. The proxy target is the
- * backend URL; keep `NEXT_PUBLIC_API_URL` pointed at it.
+ * set and sent first-party.
  */
 const BACKEND_ORIGIN = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/+$/, "");
 
 const nextConfig: NextConfig = {
+  // Self-contained server bundle for the Docker image (`node server.js`).
+  output: "standalone",
+  // The repo root also has a package.json; trace from this package only.
+  outputFileTracingRoot: process.cwd(),
   reactStrictMode: true,
   poweredByHeader: false,
   eslint: { ignoreDuringBuilds: false },
