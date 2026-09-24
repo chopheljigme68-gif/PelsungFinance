@@ -410,14 +410,6 @@ export function VoucherPrintModal({
                   </div>
                 </>
               )}
-              {showsStandardVoucherDeductions(voucher) && voucher.tdsNu > 0 && (
-                <div>
-                  <dt>{voucher.tdsRate}% TDS</dt>
-                  <dd>
-                    : {money.format(voucher.tdsNu)} on {money.format(voucher.amountNu - voucher.gstNu)} (Gross less GST)
-                  </dd>
-                </div>
-              )}
               {showsStandardVoucherDeductions(voucher) && voucher.advanceRecoveryNu > 0 && (
                 <div>
                   <dt>Advance Recovery</dt>
