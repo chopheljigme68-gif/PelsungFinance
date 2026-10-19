@@ -42,6 +42,14 @@ import type {
  * serve an empty list and log it, so the dashboard and every other screen still
  * load instantly. The feature simply lights up once the migration is applied.
  */
+/**
+ * A posted budget line's signed effect on its activity's committed amount:
+ * spending vouchers (payment, journal, DT, payroll) add to it, a refund
+ * receipt gives it back, an advance never touches the budget. Mirrors
+ * `budgetLineSign` in the voucher domain. Expects aliases `v` and `line`.
+ */
+const SIGNED_BUDGET_LINE = raw`CASE v.voucher_type WHEN 'Receipt' THEN -line.amount_nu WHEN 'Advance' THEN 0 ELSE line.amount_nu END`;
+
 async function optionalList<T>(label: string, query: Promise<T[]>): Promise<T[]> {
   try {
     return await query;
@@ -171,8 +179,8 @@ async function selectActivities(executor: DbExecutor, fiscalYear: string): Promi
       a.budget_type        AS "budgetType",
       a.approved_nu        AS "approvedNu",
       a.brief,
-      COALESCE(SUM(CASE WHEN v.voucher_type <> 'Advance' AND v.status = 'Paid' THEN line.amount_nu ELSE 0 END), 0) AS "utilizedNu",
-      COALESCE(SUM(CASE WHEN v.voucher_type <> 'Advance' AND v.status IN ('Approved','Paid') THEN line.amount_nu ELSE 0 END), 0) AS "committedNu"
+      COALESCE(SUM(CASE WHEN v.status = 'Paid' THEN ${SIGNED_BUDGET_LINE} ELSE 0 END), 0) AS "utilizedNu",
+      COALESCE(SUM(CASE WHEN v.status IN ('Approved','Paid') THEN ${SIGNED_BUDGET_LINE} ELSE 0 END), 0) AS "committedNu"
     FROM budget_activities a
     LEFT JOIN voucher_budget_lines line ON line.activity_id = a.id
     LEFT JOIN vouchers v ON v.id = line.voucher_id
@@ -205,6 +213,8 @@ async function selectVouchers(executor: DbExecutor, fiscalYear: string): Promise
       COALESCE(v.tds_nu, 0)               AS "tdsNu",
       COALESCE(v.advance_recovery_nu, 0)  AS "advanceRecoveryNu",
       v.advance_recovery_voucher_id       AS "advanceRecoveryVoucherId",
+      v.ledger_code                       AS "ledgerCode",
+      v.receipt_category                  AS "receiptCategory",
       CASE
         WHEN v.payroll_entry_type = 'combined' THEN v.net_payment_nu
         ELSE COALESCE(NULLIF(v.net_payment_nu, 0), v.amount_nu - COALESCE(v.tds_nu, 0) - COALESCE(v.advance_recovery_nu, 0))
@@ -253,7 +263,11 @@ async function selectVouchers(executor: DbExecutor, fiscalYear: string): Promise
         WHEN 'combined'               THEN 'Payroll Payment'
         WHEN 'tds_hc_remittance'      THEN 'Salary TDS & Health Contribution Remittance'
         WHEN 'supplier_tds_remittance' THEN 'TDS Remittance'
-        ELSE CASE WHEN v.voucher_type = 'Receipt' THEN 'Fund Received from ' || v.payee ELSE 'Advance (non-budget)' END
+        ELSE CASE
+          WHEN v.receipt_category = 'Other receipt' THEN 'Other Receipt from ' || v.payee
+          WHEN v.voucher_type = 'Receipt' THEN 'Fund Received from ' || v.payee
+          ELSE 'Advance (non-budget)'
+        END
       END) AS "activity",
       COALESCE(a.obc, CASE v.payroll_entry_type
         WHEN 'gross'                  THEN 'PAY-GROSS'
@@ -262,11 +276,16 @@ async function selectVouchers(executor: DbExecutor, fiscalYear: string): Promise
         WHEN 'combined'               THEN 'PAY-COMB'
         WHEN 'tds_hc_remittance'      THEN 'PAY-REMIT'
         WHEN 'supplier_tds_remittance' THEN 'TDS-REMIT'
-        ELSE CASE WHEN v.voucher_type = 'Receipt' THEN 'FUND-REC' ELSE 'ADV' END
+        ELSE CASE
+          WHEN v.receipt_category = 'Other receipt' THEN 'OTH-REC'
+          WHEN v.voucher_type = 'Receipt' THEN 'FUND-REC'
+          ELSE 'ADV'
+        END
       END) AS "obc",
       COALESCE(a.category, CASE
         WHEN v.payroll_entry_type = 'supplier_tds_remittance' THEN 'Tax Control'
         WHEN v.payroll_entry_type IS NOT NULL THEN 'Payroll Control'
+        WHEN v.receipt_category = 'Other receipt' THEN 'Other Receipt'
         WHEN v.voucher_type = 'Receipt' THEN 'Fund Receipt'
         ELSE 'Advance Receivable'
       END) AS "category",
@@ -380,11 +399,10 @@ async function selectPayrollRuns(executor: DbExecutor, fiscalYear: string): Prom
       a.activity   AS "budgetActivityName",
       a.financing  AS "budgetActivityFinancing",
       a.approved_nu - COALESCE((
-        SELECT SUM(line.amount_nu)
+        SELECT SUM(${SIGNED_BUDGET_LINE})
         FROM voucher_budget_lines line
         JOIN vouchers v ON v.id = line.voucher_id
         WHERE line.activity_id = pr.budget_activity_id
-          AND v.voucher_type <> 'Advance'
           AND v.status IN ('Approved','Paid')
       ), 0) AS "budgetActivityAvailableNu",
       pr.employee_count         AS "employeeCount",
@@ -680,19 +698,17 @@ export async function loadActivityBalances(
       a.activity,
       a.approved_nu AS "approvedNu",
       COALESCE((
-        SELECT SUM(line.amount_nu)
+        SELECT SUM(${SIGNED_BUDGET_LINE})
         FROM voucher_budget_lines line
         JOIN vouchers v ON v.id = line.voucher_id
         WHERE line.activity_id = a.id
-          AND v.voucher_type <> 'Advance'
           AND v.status IN ('Approved','Paid')
       ), 0) AS "committedNu",
       a.approved_nu - COALESCE((
-        SELECT SUM(line.amount_nu)
+        SELECT SUM(${SIGNED_BUDGET_LINE})
         FROM voucher_budget_lines line
         JOIN vouchers v ON v.id = line.voucher_id
         WHERE line.activity_id = a.id
-          AND v.voucher_type <> 'Advance'
           AND v.status IN ('Approved','Paid')
       ), 0) AS "availableNu"
     FROM budget_activities a

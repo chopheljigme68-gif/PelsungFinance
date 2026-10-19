@@ -662,7 +662,7 @@ await db.transaction(async (tx) => {
       "advance_recovery_voucher_id", "net_payment_nu", "payroll_run_id", "payroll_remittance_run_id",
       "supplier_tds_remittance_run_id", "payroll_entry_type", "payroll_health_contribution_nu",
       "status", "transaction_date", "created_at", "created_by", "approved_by", "approved_at",
-      "reversed_by", "reversed_at", "reversal_reason",
+      "reversed_by", "reversed_at", "reversal_reason", "receipt_category",
     ],
     (voucher) => {
       const amountNu = num(voucher.amount_nu);
@@ -710,6 +710,8 @@ await db.transaction(async (tx) => {
         ref(voucher.reversed_by, userIds, "reversed_by", "vouchers", voucher.id),
         ts(voucher.reversed_at),
         text(voucher.reversal_reason),
+        // Legacy receipts were all fund receipts into the operating bank.
+        String(voucher.voucher_type) === "Receipt" ? "Fund receipt" : null,
       ];
     },
   );

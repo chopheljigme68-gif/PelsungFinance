@@ -10,6 +10,7 @@ import {
   VoucherAccount,
   showsStandardVoucherDeductions,
   voucherDisplayType,
+  voucherBalanceName,
 } from "@/components/vouchers/voucher-parts";
 import { ApiError, api } from "@/lib/api";
 import { money } from "@/lib/format";
@@ -55,13 +56,20 @@ function ApprovalQueue({ data }: { data: AccountingData }) {
   /** Reversal keeps the original entry and records why it was undone. */
   const reverse = async (voucher: Voucher) => {
     const isAdvance = voucher.voucherType === "Advance";
-    const isFundReceipt = voucher.voucherType === "Receipt";
+    const isReceipt = voucher.voucherType === "Receipt";
+    const isRefund = isReceipt && voucher.budgetLines.length > 0;
+    const isDirectTransaction = voucher.voucherType === "DT";
+    const ledger = voucherBalanceName(voucher);
     const isSupplierTdsRemittance = voucher.payrollEntryType === "supplier_tds_remittance";
 
     const reversalReason = window
       .prompt(
         `Enter the reason for reversing ${voucher.voucherNumber}. This reason will appear in the ${
-          isAdvance ? "outstanding advances report" : isFundReceipt ? "receipts and payments report" : "expenditure report"
+          isAdvance
+            ? "outstanding advances report"
+            : isReceipt && !isRefund
+              ? "receipts and payments report"
+              : "expenditure report"
         } and audit trail.`,
       )
       ?.trim();
@@ -74,9 +82,13 @@ function ApprovalQueue({ data }: { data: AccountingData }) {
     const confirmed = window.confirm(
       isAdvance
         ? `Reverse approved advance ${voucher.voucherNumber}? The bank impact will be reversed and it will be removed from outstanding advances. The budget will remain unchanged.`
-        : isFundReceipt
-          ? `Reverse approved fund receipt ${voucher.voucherNumber}? The receipt will be removed from the bank balance. The budget will remain unchanged.`
-          : isSupplierTdsRemittance
+        : isRefund
+          ? `Reverse approved refund ${voucher.voucherNumber}? It will be removed from the ${ledger} balance and ${money.format(voucher.amountNu)} will be charged back to the budget activity.`
+          : isReceipt
+            ? `Reverse approved receipt ${voucher.voucherNumber}? It will be removed from the ${ledger} balance. The budget will remain unchanged.`
+            : isDirectTransaction
+              ? `Reverse approved direct transaction ${voucher.voucherNumber}? The amount ${money.format(voucher.amountNu)} will be restored to the available budget. The bank balance is not affected.`
+              : isSupplierTdsRemittance
             ? `Reverse approved TDS Remittance ${voucher.voucherNumber}? Its bank impact will be reversed and the source deductions will become available for remittance again. The budget will remain unchanged.`
             : `Reverse approved voucher ${voucher.voucherNumber}? The amount ${money.format(voucher.amountNu)} will be restored to the available budget.`,
     );
@@ -86,9 +98,13 @@ function ApprovalQueue({ data }: { data: AccountingData }) {
       () => api.reverseVoucher(voucher.id, reversalReason, fiscalYear),
       isAdvance
         ? `${voucher.voucherNumber} was reversed. Its bank impact was reversed and it is no longer outstanding; the budget remains unchanged.`
-        : isFundReceipt
-          ? `${voucher.voucherNumber} was reversed. The fund receipt was removed from the bank balance; the budget remains unchanged.`
-          : isSupplierTdsRemittance
+        : isRefund
+          ? `${voucher.voucherNumber} was reversed. The refund was removed from the ${ledger} balance and charged back to the budget activity.`
+          : isReceipt
+            ? `${voucher.voucherNumber} was reversed. The receipt was removed from the ${ledger} balance; the budget remains unchanged.`
+            : isDirectTransaction
+              ? `${voucher.voucherNumber} was reversed. The amount was restored to the available budget; the bank balance is unchanged.`
+              : isSupplierTdsRemittance
             ? `${voucher.voucherNumber} was reversed. The supplier TDS deductions are available for remittance again; the budget remains unchanged.`
             : `${voucher.voucherNumber} was reversed. The amount was restored to the available balance and the reversal is shown in the expenditure report.`,
     );
@@ -238,7 +254,13 @@ function approvalMessage(voucher: Voucher): string {
     return "Advance approved successfully. It has reduced the bank position and is now listed as outstanding; the budget is unchanged.";
   }
   if (voucher.voucherType === "Receipt") {
-    return `Fund receipt approved successfully. The fund received from ${voucher.payee} has increased the bank balance; the approved budget is unchanged.`;
+    const ledger = voucherBalanceName(voucher);
+    return voucher.budgetLines.length
+      ? `Refund approved successfully. ${money.format(voucher.amountNu)} from ${voucher.payee} has increased the ${ledger} balance and been credited back to the budget activity.`
+      : `Receipt approved successfully. The amount received from ${voucher.payee} has increased the ${ledger} balance; the approved budget is unchanged.`;
+  }
+  if (voucher.voucherType === "DT") {
+    return "Direct transaction approved successfully. The available budget balance has been updated; the bank balance is unchanged.";
   }
   return "Voucher approved successfully. The available budget balance has been updated.";
 }

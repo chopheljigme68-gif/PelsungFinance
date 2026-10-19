@@ -4,11 +4,36 @@
  * Mirrored in `backend/src/domain/vouchers.ts`.
  */
 
+import { isBankLedger } from "@/lib/reference";
+
 export const VOUCHER_TDS_RATES = [0, 2, 5] as const;
 export type VoucherTdsRate = (typeof VOUCHER_TDS_RATES)[number];
 
-export const VOUCHER_TYPES = ["Payment", "Journal", "Receipt", "Advance"] as const;
+export const VOUCHER_TYPES = ["Payment", "Journal", "Receipt", "Advance", "DT"] as const;
 export type VoucherType = (typeof VOUCHER_TYPES)[number];
+
+/**
+ * What a Receipt voucher records. Only a refund touches the budget: it credits
+ * the expenditure back to the activities it was charged to, raising their
+ * available balance. Fund and other receipts carry no budget line.
+ */
+export const RECEIPT_CATEGORIES = ["Fund receipt", "Refund", "Other receipt"] as const;
+export type ReceiptCategory = (typeof RECEIPT_CATEGORIES)[number];
+
+export function receiptCreditsBudget(category: string | null | undefined): boolean {
+  return category === "Refund";
+}
+
+/**
+ * How a posted voucher's budget lines move an activity's committed amount:
+ * +1 spends it, −1 gives it back (a refund receipt), 0 never touches it.
+ * Mirrored in SQL as `SIGNED_BUDGET_LINE` in the accounting service.
+ */
+export function budgetLineSign(voucherType: string): 1 | -1 | 0 {
+  if (voucherType === "Receipt") return -1;
+  if (voucherType === "Advance") return 0;
+  return 1;
+}
 
 export const VOUCHER_STATUSES = ["Draft", "Pending", "Approved", "Paid", "Rejected", "Reversed"] as const;
 export type VoucherStatus = (typeof VOUCHER_STATUSES)[number];
@@ -30,17 +55,28 @@ export function isPostedStatus(status: string): boolean {
   return POSTED_STATUSES.includes(status as VoucherStatus);
 }
 
-type BankEffectVoucher = {
+type LedgerEffectVoucher = {
   voucherType: string;
   amountNu: number;
   netPaymentNu: number;
+  ledgerCode?: string | null;
 };
 
-/** Signed effect of a posted voucher on the operating bank account. */
-export function voucherBankEffectNu(voucher: BankEffectVoucher): number {
-  if (voucher.voucherType === "Receipt") return voucher.amountNu;
+/**
+ * Signed effect of a posted voucher on the operating bank account. A receipt
+ * into cash and a direct transaction (DT) leave the bank untouched; journals
+ * never move money.
+ */
+export function voucherBankEffectNu(voucher: LedgerEffectVoucher): number {
+  if (voucher.voucherType === "Receipt") return isBankLedger(voucher.ledgerCode) ? voucher.amountNu : 0;
   if (voucher.voucherType === "Payment") return -voucher.netPaymentNu;
   if (voucher.voucherType === "Advance") return -voucher.amountNu;
+  return 0;
+}
+
+/** Signed effect of a posted voucher on cash in hand (only cash receipts today). */
+export function voucherCashEffectNu(voucher: LedgerEffectVoucher): number {
+  if (voucher.voucherType === "Receipt" && !isBankLedger(voucher.ledgerCode)) return voucher.amountNu;
   return 0;
 }
 
@@ -70,6 +106,8 @@ export function voucherNumberPrefix(voucherType: VoucherType): string {
       return "RV";
     case "Advance":
       return "AV";
+    case "DT":
+      return "DT";
     default:
       return "PV";
   }

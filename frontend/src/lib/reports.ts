@@ -1,4 +1,5 @@
-import { isPostedStatus } from "@/lib/vouchers";
+import { findLedger } from "@/lib/reference";
+import { budgetLineSign, isPostedStatus } from "@/lib/vouchers";
 import type { Activity, PayrollEntryType, Voucher, VoucherStatus } from "@/types";
 
 export type ReportGroup = "Monthly" | "Administrative";
@@ -36,6 +37,10 @@ export type ReportEntry = {
   direction: "receipt" | "payment";
   amountNu: number;
   cashAmountNu: number;
+  /** "Bank" or "Cash": the ledger the money moved through (receipts and payments). */
+  ledger: string;
+  /** A refund receipt line, credited back against the expenditure. */
+  isRefund: boolean;
 };
 
 const POSTED_OR_REVERSED: VoucherStatus[] = ["Approved", "Paid", "Reversed"];
@@ -46,15 +51,23 @@ function entryLabel(status: VoucherStatus): string {
   return "Approved transaction";
 }
 
+function ledgerLabel(voucher: Voucher): string {
+  return findLedger(voucher.ledgerCode)?.kind === "cash" ? "Cash" : "Bank";
+}
+
 /**
  * Expenditure is reported per budget allocation, so a voucher split across
  * three activities appears as three lines. A reversal adds a negative mirror
  * line dated at the reversal, keeping both sides visible in the statement.
+ * A refund receipt reports its lines as negative expenditure (the money came
+ * back), and a DT reports like any other spend.
  */
 export function expenditureEntries(vouchers: Voucher[]): ReportEntry[] {
   return vouchers
     .filter((voucher) => POSTED_OR_REVERSED.includes(voucher.status))
     .flatMap((voucher) => {
+      const sign = budgetLineSign(voucher.voucherType);
+      const isRefund = sign === -1;
       const allocations = voucher.budgetLines.length
         ? voucher.budgetLines
         : voucher.activityId
@@ -75,11 +88,13 @@ export function expenditureEntries(vouchers: Voucher[]): ReportEntry[] {
           activityIds: [allocation.activityId],
           obc: allocation.obc,
           activity: allocation.activity,
-          entry: entryLabel(voucher.status),
+          entry: isRefund ? "Refund credited to budget" : entryLabel(voucher.status),
           status: voucher.status,
           direction: "payment",
-          amountNu: allocation.amountNu,
-          cashAmountNu: allocation.amountNu,
+          amountNu: sign * allocation.amountNu,
+          cashAmountNu: sign * allocation.amountNu,
+          ledger: ledgerLabel(voucher),
+          isRefund,
         };
         if (voucher.status !== "Reversed") return [original];
         return [
@@ -93,18 +108,23 @@ export function expenditureEntries(vouchers: Voucher[]): ReportEntry[] {
             particulars: `Reversal: ${voucher.reversalReason}`,
             entry: "Authorised reversal",
             status: "Reversed" as const,
-            amountNu: -allocation.amountNu,
-            cashAmountNu: -allocation.amountNu,
+            amountNu: -original.amountNu,
+            cashAmountNu: -original.cashAmountNu,
           },
         ];
       });
     });
 }
 
-/** Receipts and payments follow the cash actually moved, not the gross bill. */
+/**
+ * Receipts and payments follow the cash actually moved, not the gross bill —
+ * through the bank or cash in hand. A direct transaction (DT) never passes
+ * through the cash book, so it is left out.
+ */
 export function cashEntries(vouchers: Voucher[]): ReportEntry[] {
   return vouchers
     .filter((voucher) => POSTED_OR_REVERSED.includes(voucher.status))
+    .filter((voucher) => voucher.voucherType !== "DT")
     .flatMap((voucher) => {
       const activityIds = voucher.budgetLines.map((line) => line.activityId);
       const obc = voucher.budgetLines.length > 1 ? voucher.budgetLines.map((line) => line.obc).join(", ") : voucher.obc;
@@ -131,6 +151,8 @@ export function cashEntries(vouchers: Voucher[]): ReportEntry[] {
         direction,
         amountNu: voucher.amountNu,
         cashAmountNu,
+        ledger: ledgerLabel(voucher),
+        isRefund: budgetLineSign(voucher.voucherType) === -1 && voucher.budgetLines.length > 0,
       };
       if (voucher.status !== "Reversed") return [original];
       return [

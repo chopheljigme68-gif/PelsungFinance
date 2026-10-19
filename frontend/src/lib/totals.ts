@@ -1,4 +1,4 @@
-import { isPostedStatus, voucherBankEffectNu } from "@/lib/vouchers";
+import { isPostedStatus, voucherBankEffectNu, voucherCashEffectNu } from "@/lib/vouchers";
 import type { AccountingData, Voucher } from "@/types";
 
 /** Advance still outstanding after approved or paid recoveries. */
@@ -18,6 +18,7 @@ export type WorkspaceTotals = {
   capital: number;
   pending: number;
   bankMovement: number;
+  cashInHand: number;
   outstandingAdvances: number;
 };
 
@@ -47,6 +48,7 @@ export function workspaceTotals(data: Pick<AccountingData, "activities" | "vouch
     capital: approved - current,
     pending: vouchers.filter((voucher) => voucher.status === "Pending").length,
     bankMovement: posted.reduce((sum, voucher) => sum + voucherBankEffectNu(voucher), 0),
+    cashInHand: posted.reduce((sum, voucher) => sum + voucherCashEffectNu(voucher), 0),
     outstandingAdvances: posted
       .filter((voucher) => voucher.voucherType === "Advance")
       .reduce((sum, voucher) => sum + outstandingAdvanceBalance(voucher, vouchers), 0),

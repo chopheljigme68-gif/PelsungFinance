@@ -4,12 +4,16 @@ import { payrollRunItems, payrollRuns, supplierTdsRemittanceRuns, voucherBudgetL
 import {
   EMAIL_PATTERN,
   TPN_PATTERN,
+  budgetLineSign,
   calculateVoucherDeductions,
   formatVoucherNumber,
+  receiptCreditsBudget,
   roundNu,
+  type ReceiptCategory,
   type VoucherStatus,
   type VoucherType,
 } from "../../domain/vouchers.js";
+import { BANK_LEDGER_CODE, findLedger } from "../../domain/reference.js";
 import { audit } from "../../lib/audit.js";
 import { EmailDeliveryError, sendPayrollPayslipEmail } from "../../lib/email.js";
 import { PG_UNIQUE_VIOLATION, badRequest, conflict, forbidden, isPostgresError } from "../../lib/errors.js";
@@ -38,26 +42,82 @@ export type CreateVoucherInput = {
   transactionDate: string;
   budgetLines?: BudgetLineInput[];
   activityId?: number | null;
+  /** Receipts: the bank or cash ledger the money landed in. DT: the bank ledger it went through. */
+  ledgerCode?: string | null;
+  receiptCategory?: ReceiptCategory | null;
 };
+
+type ActivityBalances = Awaited<ReturnType<typeof loadActivityBalances>>;
+
+/**
+ * Budget rule for one set of voucher lines, shared by create, approve and
+ * reverse so the three can never disagree.
+ *
+ * Spending lines (payments, journals, DT) may not exceed what is still
+ * available on the activity. Refund lines give budget back, so they may not
+ * exceed what has actually been spent on it — otherwise an activity could end
+ * up with more available than was ever approved.
+ */
+function assertBudgetLinesFit(
+  lines: BudgetLineInput[],
+  balances: ActivityBalances,
+  direction: "spend" | "refund",
+  verb: string,
+): void {
+  for (const line of lines) {
+    const balance = balances.get(line.activityId);
+    if (!balance) throw conflict("One of the selected budget activities was not found in this financial year.");
+    if (direction === "spend" && line.amountNu > balance.availableNu) {
+      throw conflict(
+        `${balance.obc} · ${balance.activity} ${verb} because the allocation is greater than the available balance.`,
+        { availableBalanceNu: balance.availableNu, expenditureAmountNu: line.amountNu },
+      );
+    }
+    if (direction === "refund" && line.amountNu > balance.committedNu) {
+      throw conflict(
+        `${balance.obc} · ${balance.activity} ${verb} because the refund is greater than the expenditure booked against it (Nu. ${balance.committedNu}).`,
+      );
+    }
+  }
+}
 
 /**
  * Creates a Pending voucher.
  *
- * Payments and journals must be allocated across one or more approved budget
- * activities, and the sum of those allocations *is* the voucher amount.
- * Advances and fund receipts carry no budget impact at all.
+ * Payments, journals and direct transactions (DT) must be allocated across one
+ * or more approved budget activities, and the sum of those allocations *is*
+ * the voucher amount. A refund receipt is allocated the same way but credits
+ * the activities back. Advances, fund receipts and other receipts carry no
+ * budget impact at all.
+ *
+ * The money side follows the ledger: receipts land in the bank or in cash; a
+ * DT records the bank ledger it went through but, by definition, does not move
+ * the system bank balance.
  */
 export async function createVoucher(
   user: SessionUser,
   fiscalYear: string,
   input: CreateVoucherInput,
 ): Promise<{ voucherNumber: string }> {
-  const isFundReceipt = input.voucherType === "Receipt";
-  const isAdvance = input.voucherType === "Advance";
+  const isReceipt = input.voucherType === "Receipt";
   const isPayment = input.voucherType === "Payment";
-  const hasNoBudgetImpact = isAdvance || isFundReceipt;
+  const isDirectTransaction = input.voucherType === "DT";
+  const receiptCategory: ReceiptCategory | null = isReceipt ? (input.receiptCategory ?? "Fund receipt") : null;
+  const isRefund = isReceipt && receiptCreditsBudget(receiptCategory);
+  const spendsBudget = budgetLineSign(input.voucherType) === 1;
+  const hasNoBudgetImpact = !spendsBudget && !isRefund;
 
-  if (isFundReceipt ? !can(user, "record_fund_receipt") : !can(user, "create_voucher")) throw forbidden();
+  if (isReceipt ? !can(user, "record_fund_receipt") : !can(user, "create_voucher")) throw forbidden();
+
+  // Only receipts and DTs choose a ledger; everything else runs through the operating bank.
+  if (isDirectTransaction && !input.ledgerCode) {
+    throw badRequest("Select the bank ledger the direct transaction went through.");
+  }
+  const ledger = findLedger(isReceipt || isDirectTransaction ? input.ledgerCode : BANK_LEDGER_CODE);
+  if (!ledger) throw badRequest("Select a valid bank or cash ledger.");
+  if (isDirectTransaction && ledger.kind !== "bank") {
+    throw badRequest("A direct transaction must be recorded against a bank ledger.");
+  }
 
   const budgetLines: BudgetLineInput[] = hasNoBudgetImpact
     ? []
@@ -76,7 +136,11 @@ export async function createVoucher(
         (line) => Number.isInteger(line.activityId) && line.activityId > 0 && Number.isFinite(line.amountNu) && line.amountNu > 0,
       );
     if (!valid) {
-      throw badRequest("Select an approved budget activity and enter a positive amount for every allocation line.");
+      throw badRequest(
+        isRefund
+          ? "Select the budget activity being refunded and enter a positive amount for every line."
+          : "Select an approved budget activity and enter a positive amount for every allocation line.",
+      );
     }
   }
 
@@ -131,16 +195,12 @@ export async function createVoucher(
         budgetLines.map((line) => line.activityId),
         true,
       );
-      for (const line of budgetLines) {
-        const balance = balances.get(line.activityId);
-        if (!balance) throw conflict("One of the selected budget activities was not found in this financial year.");
-        if (line.amountNu > balance.availableNu) {
-          throw conflict(
-            `${balance.obc} · ${balance.activity} cannot accept this allocation because it is greater than the available balance.`,
-            { availableBalanceNu: balance.availableNu, expenditureAmountNu: line.amountNu },
-          );
-        }
-      }
+      assertBudgetLinesFit(
+        budgetLines,
+        balances,
+        isRefund ? "refund" : "spend",
+        isRefund ? "cannot take this refund" : "cannot accept this allocation",
+      );
     }
 
     const monthKey = input.transactionDate.slice(5, 7);
@@ -167,6 +227,8 @@ export async function createVoucher(
         advanceRecoveryNu,
         advanceRecoveryVoucherId,
         netPaymentNu,
+        ledgerCode: ledger.code,
+        receiptCategory,
         status: "Pending",
         transactionDate: input.transactionDate,
         createdBy: user.id,
@@ -184,7 +246,7 @@ export async function createVoucher(
       "voucher_created",
       "voucher",
       voucher.voucherNumber,
-      `${input.voucherType} voucher: ${budgetLines.length} budget allocation(s), gross Nu. ${amountNu}, TDS Nu. ${tdsNu}, advance recovery Nu. ${advanceRecoveryNu}, net Nu. ${netPaymentNu}`,
+      `${input.voucherType}${receiptCategory ? ` (${receiptCategory})` : ""} voucher via ${ledger.code} ${ledger.name}: ${budgetLines.length} budget ${isRefund ? "refund line(s)" : "allocation(s)"}, gross Nu. ${amountNu}, TDS Nu. ${tdsNu}, advance recovery Nu. ${advanceRecoveryNu}, net Nu. ${netPaymentNu}`,
       tx,
     );
 
@@ -260,12 +322,9 @@ export async function decideVoucher(
       }
     }
 
-    if (status === "Approved" && pending.voucherType !== "Advance" && pending.activityId) {
-      const lines = await tx
-        .select({ activityId: voucherBudgetLines.activityId, amountNu: voucherBudgetLines.amountNu })
-        .from(voucherBudgetLines)
-        .where(eq(voucherBudgetLines.voucherId, voucherId));
-
+    const sign = budgetLineSign(pending.voucherType);
+    if (status === "Approved" && sign !== 0 && pending.activityId) {
+      const lines = await loadBudgetLines(tx, voucherId);
       if (!lines.length) throw conflict("This voucher has no valid budget allocations and cannot be approved.");
 
       const balances = await loadActivityBalances(
@@ -274,16 +333,7 @@ export async function decideVoucher(
         lines.map((line) => line.activityId),
         true,
       );
-      for (const line of lines) {
-        const balance = balances.get(line.activityId);
-        if (!balance) throw conflict("This voucher has no valid budget allocations and cannot be approved.");
-        if (line.amountNu > balance.availableNu) {
-          throw conflict(
-            `${balance.obc} · ${balance.activity} cannot be approved because its allocation is greater than the available balance.`,
-            { availableBalanceNu: balance.availableNu, expenditureAmountNu: line.amountNu },
-          );
-        }
-      }
+      assertBudgetLinesFit(lines, balances, sign === 1 ? "spend" : "refund", "cannot be approved");
     }
 
     const updated = await tx
@@ -406,7 +456,9 @@ export async function reverseVoucher(
     const [voucher] = await tx
       .select({
         id: vouchers.id,
+        fiscalYear: vouchers.fiscalYear,
         voucherType: vouchers.voucherType,
+        activityId: vouchers.activityId,
         supplierTdsRemittanceRunId: vouchers.supplierTdsRemittanceRunId,
       })
       .from(vouchers)
@@ -444,6 +496,19 @@ export async function reverseVoucher(
       }
     }
 
+    // Reversing a refund takes the credited budget back off the activities, so
+    // it must still fit inside what is available on each of them now.
+    if (budgetLineSign(voucher.voucherType) === -1 && voucher.activityId) {
+      const lines = await loadBudgetLines(tx, voucherId);
+      const balances = await loadActivityBalances(
+        tx,
+        voucher.fiscalYear,
+        lines.map((line) => line.activityId),
+        true,
+      );
+      assertBudgetLinesFit(lines, balances, "spend", "cannot absorb this refund reversal");
+    }
+
     const reversed = await tx
       .update(vouchers)
       .set({ status: "Reversed", reversedBy: user.id, reversedAt: new Date(), reversalReason })
@@ -470,6 +535,13 @@ export async function reverseVoucher(
       tx,
     );
   });
+}
+
+async function loadBudgetLines(executor: DbExecutor, voucherId: number): Promise<BudgetLineInput[]> {
+  return executor
+    .select({ activityId: voucherBudgetLines.activityId, amountNu: voucherBudgetLines.amountNu })
+    .from(voucherBudgetLines)
+    .where(eq(voucherBudgetLines.voucherId, voucherId));
 }
 
 /** Removes generated payroll vouchers that never reached an approved state. */

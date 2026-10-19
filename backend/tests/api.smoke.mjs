@@ -310,6 +310,133 @@ async function main() {
     reversed.payload.vouchers.find((item) => item.id === receiptVoucher.id).reversalReason.includes("Smoke test"),
   );
 
+  console.log("\nReceipts into cash, refunds and direct transactions (DT)");
+  // Signed effects, mirroring voucherBankEffectNu / voucherCashEffectNu.
+  const postedOf = (snapshot) => snapshot.vouchers.filter((item) => ["Approved", "Paid"].includes(item.status));
+  const bankOf = (snapshot) =>
+    postedOf(snapshot).reduce((sum, item) => {
+      if (item.voucherType === "Receipt") return sum + (item.ledgerCode === "1001" ? item.amountNu : 0);
+      if (item.voucherType === "Payment") return sum - item.netPaymentNu;
+      if (item.voucherType === "Advance") return sum - item.amountNu;
+      return sum;
+    }, 0);
+  const cashOf = (snapshot) =>
+    postedOf(snapshot).reduce(
+      (sum, item) => sum + (item.voucherType === "Receipt" && item.ledgerCode === "1002" ? item.amountNu : 0),
+      0,
+    );
+  const committedOf = (snapshot) => snapshot.activities.find((item) => item.id === activity.id).committedNu;
+  const approve = (id) => call("PATCH", `/api/vouchers/${id}/status`, { fiscalYear: FY, status: "Approved" });
+
+  const before = (await call("GET", `/api/accounting?fiscalYear=${FY}`)).payload;
+
+  const dtWithoutLedger = await call("POST", "/api/vouchers", {
+    fiscalYear: FY,
+    voucherType: "DT",
+    payee: "Bhutan Telecom",
+    description: "Leased line debited directly by the bank",
+    transactionDate: DATE,
+    budgetLines: [{ activityId: activity.id, amountNu: 10000 }],
+  });
+  check("DT without a bank ledger is refused", dtWithoutLedger.status === 400, String(dtWithoutLedger.status));
+
+  const dtIntoCash = await call("POST", "/api/vouchers", {
+    fiscalYear: FY,
+    voucherType: "DT",
+    payee: "Bhutan Telecom",
+    description: "Leased line debited directly by the bank",
+    transactionDate: DATE,
+    ledgerCode: "1002",
+    budgetLines: [{ activityId: activity.id, amountNu: 10000 }],
+  });
+  check("DT against the cash ledger is refused", dtIntoCash.status === 400, String(dtIntoCash.status));
+
+  const dt = await call("POST", "/api/vouchers", {
+    fiscalYear: FY,
+    voucherType: "DT",
+    payee: "Bhutan Telecom",
+    description: "Leased line debited directly by the bank",
+    transactionDate: DATE,
+    ledgerCode: "1001",
+    budgetLines: [{ activityId: activity.id, amountNu: 10000 }],
+  });
+  check("DT voucher is created", dt.status === 201, dt.payload.error);
+  const dtVoucher = dt.payload.vouchers[0];
+  check("DT numbering uses DT", dtVoucher.voucherNumber.startsWith("DT."), dtVoucher.voucherNumber);
+  check("DT records the bank ledger", dtVoucher.ledgerCode === "1001");
+  const afterDt = (await approve(dtVoucher.id)).payload;
+  check("approved DT spends the activity budget", committedOf(afterDt) === committedOf(before) + 10000);
+  check("approved DT leaves the bank balance unchanged", bankOf(afterDt) === bankOf(before));
+
+  const refundWithoutLines = await call("POST", "/api/vouchers", {
+    fiscalYear: FY,
+    voucherType: "Receipt",
+    receiptCategory: "Refund",
+    payee: "Druk Air",
+    description: "Refund of cancelled ticket",
+    amountNu: 4000,
+    transactionDate: DATE,
+    ledgerCode: "1002",
+  });
+  check("refund without a budget activity is refused", refundWithoutLines.status === 400, String(refundWithoutLines.status));
+
+  const overRefund = await call("POST", "/api/vouchers", {
+    fiscalYear: FY,
+    voucherType: "Receipt",
+    receiptCategory: "Refund",
+    payee: "Druk Air",
+    description: "Refund larger than the spend",
+    transactionDate: DATE,
+    ledgerCode: "1001",
+    budgetLines: [{ activityId: activity.id, amountNu: committedOf(afterDt) + 1 }],
+  });
+  check("refund above the activity's expenditure is refused", overRefund.status === 409, String(overRefund.status));
+
+  const refund = await call("POST", "/api/vouchers", {
+    fiscalYear: FY,
+    voucherType: "Receipt",
+    receiptCategory: "Refund",
+    payee: "Druk Air",
+    description: "Refund of cancelled ticket",
+    transactionDate: DATE,
+    ledgerCode: "1002",
+    budgetLines: [{ activityId: activity.id, amountNu: 4000 }],
+  });
+  check("cash refund receipt is created", refund.status === 201, refund.payload.error);
+  const refundVoucher = refund.payload.vouchers[0];
+  check("refund keeps its category and cash ledger", refundVoucher.receiptCategory === "Refund" && refundVoucher.ledgerCode === "1002");
+  check("refund amount is the sum of its lines", refundVoucher.amountNu === 4000, String(refundVoucher.amountNu));
+  const afterRefund = (await approve(refundVoucher.id)).payload;
+  check("approved refund gives budget back to the activity", committedOf(afterRefund) === committedOf(afterDt) - 4000);
+  check("approved cash refund raises cash in hand", cashOf(afterRefund) === cashOf(afterDt) + 4000);
+  check("approved cash refund leaves the bank unchanged", bankOf(afterRefund) === bankOf(afterDt));
+
+  const other = await call("POST", "/api/vouchers", {
+    fiscalYear: FY,
+    voucherType: "Receipt",
+    receiptCategory: "Other receipt",
+    payee: "Tender applicant",
+    description: "Sale of tender documents",
+    amountNu: 1500,
+    transactionDate: DATE,
+    ledgerCode: "1001",
+  });
+  check("other receipt into the bank is created", other.status === 201, other.payload.error);
+  const afterOther = (await approve(other.payload.vouchers[0].id)).payload;
+  check("approved bank receipt raises the bank balance", bankOf(afterOther) === bankOf(afterRefund) + 1500);
+  check("other receipt does not touch the budget", committedOf(afterOther) === committedOf(afterRefund));
+
+  const refundReversed = await call("POST", `/api/vouchers/${refundVoucher.id}/reverse`, {
+    fiscalYear: FY,
+    reversalReason: "Smoke test reversal of a refund",
+  });
+  check("refund is reversed", refundReversed.ok, refundReversed.payload.error);
+  check(
+    "reversing a refund takes the budget back off the activity",
+    committedOf(refundReversed.payload) === committedOf(afterRefund) + 4000,
+  );
+  check("reversing a cash refund removes it from cash in hand", cashOf(refundReversed.payload) === cashOf(afterRefund) - 4000);
+
   const shortReason = await call("POST", `/api/vouchers/${created.id}/reverse`, { fiscalYear: FY, reversalReason: "no" });
   check("short reversal reasons are refused", shortReason.status === 400);
 

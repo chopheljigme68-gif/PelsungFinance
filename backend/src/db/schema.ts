@@ -399,6 +399,10 @@ export const vouchers = pgTable(
     advanceRecoveryNu: nu("advance_recovery_nu").notNull().default(0),
     advanceRecoveryVoucherId: integer("advance_recovery_voucher_id"),
     netPaymentNu: nu("net_payment_nu").notNull().default(0),
+    /** Money ledger the voucher moves: 1001 operating bank, 1002 cash in hand (receipts only). */
+    ledgerCode: text("ledger_code").notNull().default("1001"),
+    /** Receipt vouchers only: Fund receipt, Refund or Other receipt. */
+    receiptCategory: text("receipt_category"),
     payrollRunId: integer("payroll_run_id").references(() => payrollRuns.id),
     payrollRemittanceRunId: integer("payroll_remittance_run_id").references(() => payrollRemittanceRuns.id),
     supplierTdsRemittanceRunId: integer("supplier_tds_remittance_run_id").references(() => supplierTdsRemittanceRuns.id),
@@ -425,7 +429,15 @@ export const vouchers = pgTable(
     index("vouchers_supplier_tds_remittance_run_idx").on(table.supplierTdsRemittanceRunId),
     index("vouchers_status_idx").on(table.status),
     index("vouchers_transaction_date_idx").on(table.transactionDate),
-    check("vouchers_type_check", sql`${table.voucherType} in ('Payment','Journal','Receipt','Advance')`),
+    check("vouchers_type_check", sql`${table.voucherType} in ('Payment','Journal','Receipt','Advance','DT')`),
+    check(
+      "vouchers_ledger_code_check",
+      sql`${table.ledgerCode} in ('1001','1002') and (${table.ledgerCode} = '1001' or ${table.voucherType} = 'Receipt')`,
+    ),
+    check(
+      "vouchers_receipt_category_check",
+      sql`(${table.voucherType} = 'Receipt' and ${table.receiptCategory} in ('Fund receipt','Refund','Other receipt')) or (${table.voucherType} <> 'Receipt' and ${table.receiptCategory} is null)`,
+    ),
     check(
       "vouchers_status_check",
       sql`${table.status} in ('Draft','Pending','Approved','Paid','Rejected','Reversed')`,

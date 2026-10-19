@@ -1,3 +1,4 @@
+import { findLedger } from "@/lib/reference";
 import type { Voucher } from "@/types";
 
 export type LedgerRow = {
@@ -10,6 +11,16 @@ export type LedgerRow = {
   creditNu: number | null;
   reversal?: boolean;
 };
+
+/** Clearing account for direct transactions (DT): booked by the bank, not through the cash book. */
+export const DIRECT_TRANSACTION_ACCOUNT = "2201 · Direct Bank Transactions";
+
+/** `1001 · Bank` / `1002 · Cash in Hand` — the ledger line a voucher's money moves through. */
+export function ledgerAccountName(ledgerCode: string | null | undefined): string {
+  const ledger = findLedger(ledgerCode);
+  if (!ledger) return "1001 · Bank";
+  return ledger.kind === "bank" ? `${ledger.code} · Bank` : `${ledger.code} · ${ledger.name}`;
+}
 
 /**
  * Expands one posted voucher into its double-entry lines.
@@ -102,8 +113,37 @@ export function ledgerRowsForVoucher(voucher: Voucher): LedgerRow[] {
     );
     addRow("bank-credit", "1001 · Bank", "TDS remitted to the Department of Revenue and Customs", null, voucher.amountNu);
   } else if (voucher.voucherType === "Receipt") {
-    addRow("bank-debit", "1001 · Bank", voucher.payee, voucher.amountNu, null);
-    addRow("income-credit", `3001 · Fund Received from ${voucher.payee}`, voucher.description, null, voucher.amountNu);
+    // Money lands in the bank or cash ledger; a refund credits the activities
+    // it was originally charged to, anything else credits a receipts account.
+    addRow("ledger-debit", ledgerAccountName(voucher.ledgerCode), voucher.payee, voucher.amountNu, null);
+    if (voucher.budgetLines.length) {
+      voucher.budgetLines.forEach((line) =>
+        addRow(`refund-credit-${line.id}`, `${line.obc} · ${line.activity}`, `Refund: ${voucher.description}`, null, line.amountNu),
+      );
+    } else {
+      addRow(
+        "income-credit",
+        voucher.receiptCategory === "Other receipt"
+          ? `3002 · Other Receipts from ${voucher.payee}`
+          : `3001 · Fund Received from ${voucher.payee}`,
+        voucher.description,
+        null,
+        voucher.amountNu,
+      );
+    }
+  } else if (voucher.voucherType === "DT") {
+    // The bank moved the money directly, so the system bank balance is left
+    // alone: the expenditure is cleared through the direct-transaction account.
+    voucher.budgetLines.forEach((line) =>
+      addRow(`expense-debit-${line.id}`, `${line.obc} · ${line.activity}`, voucher.description, line.amountNu, null),
+    );
+    addRow(
+      "direct-credit",
+      DIRECT_TRANSACTION_ACCOUNT,
+      `${voucher.payee} · via ${ledgerAccountName(voucher.ledgerCode)}`,
+      null,
+      voucher.amountNu,
+    );
   } else if (voucher.voucherType === "Advance") {
     addRow("advance-debit", "1102 · Advance Receivable", voucher.description, voucher.amountNu, null);
     addRow("bank-credit", "1001 · Bank", voucher.payee, null, voucher.amountNu);

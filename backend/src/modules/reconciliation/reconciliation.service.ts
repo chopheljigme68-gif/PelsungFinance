@@ -2,7 +2,7 @@ import { and, eq, sql as raw } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { bankReconciliationItems, bankReconciliations, monthClosures } from "../../db/schema.js";
 import { currentBhutanMonth, monthEndDate, normalizePayMonth } from "../../domain/fiscal-year.js";
-import { OPERATING_BANK_ACCOUNT } from "../../domain/reference.js";
+import { BANK_LEDGER_CODE, OPERATING_BANK_ACCOUNT } from "../../domain/reference.js";
 import { roundNu } from "../../domain/vouchers.js";
 import { audit } from "../../lib/audit.js";
 import { badRequest, conflict, serverError } from "../../lib/errors.js";
@@ -23,13 +23,15 @@ export async function isAccountingMonthClosed(fiscalYear: string, payMonth: stri
 /**
  * The cash-book position for a month, derived from posted vouchers up to the end
  * of that month — the same figures the reconciliation is measured against.
+ * Only the operating bank ledger counts: cash receipts and direct transactions
+ * (DT) never pass through the bank statement being reconciled.
  */
 export async function loadCashBookPosition(fiscalYear: string, statementMonth: string) {
   const [row] = (await db.execute(raw`
     SELECT
-      COALESCE(SUM(CASE WHEN voucher_type = 'Receipt' THEN amount_nu ELSE 0 END), 0) AS "totalFundsReceivedNu",
+      COALESCE(SUM(CASE WHEN voucher_type = 'Receipt' AND ledger_code = ${BANK_LEDGER_CODE} THEN amount_nu ELSE 0 END), 0) AS "totalFundsReceivedNu",
       COALESCE(SUM(CASE
-        WHEN voucher_type = 'Receipt' THEN amount_nu
+        WHEN voucher_type = 'Receipt' AND ledger_code = ${BANK_LEDGER_CODE} THEN amount_nu
         WHEN voucher_type = 'Payment' THEN -COALESCE(NULLIF(net_payment_nu, 0), amount_nu - COALESCE(tds_nu, 0) - COALESCE(advance_recovery_nu, 0))
         WHEN voucher_type = 'Advance' THEN -amount_nu
         ELSE 0 END), 0) AS "closingCashBookBalanceNu"

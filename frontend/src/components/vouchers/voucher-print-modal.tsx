@@ -3,6 +3,8 @@
 import { PelsungLogo } from "@/components/ui/primitives";
 import { Portal } from "@/components/ui/portal";
 import { money, voucherAmountInWords, voucherDate } from "@/lib/format";
+import { DIRECT_TRANSACTION_ACCOUNT } from "@/lib/ledger";
+import { findLedger } from "@/lib/reference";
 import type { Activity, Voucher } from "@/types";
 import { showsStandardVoucherDeductions, voucherDisplayType } from "./voucher-parts";
 
@@ -31,23 +33,30 @@ export function VoucherPrintModal({
   onClose: () => void;
 }) {
   const isReceipt = voucher.voucherType === "Receipt";
+  const isRefund = isReceipt && voucher.budgetLines.length > 0;
+  const isDirectTransaction = voucher.voucherType === "DT";
   const isAdvance = voucher.voucherType === "Advance";
   const isPayment = voucher.voucherType === "Payment";
+  const ledger = findLedger(voucher.ledgerCode);
+  const isCashLedger = ledger?.kind === "cash";
+  const ledgerAccount = `${ledger?.code ?? "1001"} - ${ledger?.name ?? "Pelsung Operating Account"}`;
   const isPayroll = Boolean(voucher.payrollEntryType);
   const isBudgetPayroll = ["gross", "combined"].includes(voucher.payrollEntryType ?? "") && Boolean(voucher.activityId);
   const bankEffectNu = voucher.payrollEntryType === "combined" ? voucher.netPaymentNu : voucher.amountNu;
   const formTitle = isPayroll
     ? `${voucherDisplayType(voucher)} Voucher`
-    : isReceipt
-      ? "Fund Receipt Voucher"
+    : isReceipt || isDirectTransaction
+      ? `${voucherDisplayType(voucher)} Voucher`
       : voucher.voucherType === "Payment"
         ? "Payment Voucher"
         : `${voucher.voucherType} Voucher`;
   const availableBudgetNu = activity ? activity.approvedNu - activity.committedNu : null;
   const activityAccount = isAdvance
     ? "1102 - Advance Receivable"
-    : isReceipt
-      ? `3001 - Fund Received from ${voucher.payee}`
+    : isReceipt && !isRefund
+      ? voucher.receiptCategory === "Other receipt"
+        ? `3002 - Other Receipts from ${voucher.payee}`
+        : `3001 - Fund Received from ${voucher.payee}`
       : `${voucher.category} - ${voucher.activity}`;
 
   const voucherAllocations = voucher.budgetLines.length
@@ -207,52 +216,79 @@ export function VoucherPrintModal({
         ]
       : isReceipt
         ? [
-            { broadHead: "Bank", account: "1001 - Pelsung Operating Account", objectCode: "1001", debitNu: voucher.amountNu, creditNu: null },
-            { broadHead: "Fund", account: activityAccount, objectCode: "3001", debitNu: null, creditNu: voucher.amountNu },
+            {
+              broadHead: isCashLedger ? "Cash" : "Bank",
+              account: ledgerAccount,
+              objectCode: ledger?.code ?? "1001",
+              debitNu: voucher.amountNu,
+              creditNu: null,
+            },
+            ...(isRefund
+              ? budgetDebitRows.map((row) => ({ ...row, broadHead: "Refund", debitNu: null, creditNu: row.debitNu }))
+              : [
+                  {
+                    broadHead: "Fund",
+                    account: activityAccount,
+                    objectCode: voucher.receiptCategory === "Other receipt" ? "3002" : "3001",
+                    debitNu: null,
+                    creditNu: voucher.amountNu,
+                  },
+                ]),
           ]
-        : isPayment
+        : isDirectTransaction
           ? [
               ...budgetDebitRows,
-              ...(voucher.tdsNu > 0
-                ? [
-                    {
-                      broadHead: "Liability",
-                      account: `2102 - ${voucher.tdsRate}% TDS Payable`,
-                      objectCode: "2102",
-                      debitNu: null,
-                      creditNu: voucher.tdsNu,
-                    },
-                  ]
-                : []),
-              ...(voucher.advanceRecoveryNu > 0
-                ? [
-                    {
-                      broadHead: "Recovery",
-                      account: `1102 - Advance Receivable - ${voucher.advanceRecoveryVoucherNumber ?? "Outstanding advance"}`,
-                      objectCode: "1102",
-                      debitNu: null,
-                      creditNu: voucher.advanceRecoveryNu,
-                    },
-                  ]
-                : []),
               {
-                broadHead: "Bank",
-                account: `1001 - Pelsung Operating Account - ${voucher.payee}`,
-                objectCode: "1001",
-                debitNu: null,
-                creditNu: voucher.netPaymentNu,
-              },
-            ]
-          : [
-              ...budgetDebitRows,
-              {
-                broadHead: "Payable",
-                account: `1001 - Bank / Payable - ${voucher.payee}`,
-                objectCode: "1001",
+                broadHead: "Direct",
+                account: `${DIRECT_TRANSACTION_ACCOUNT.replace(" · ", " - ")} - via ${ledgerAccount}`,
+                objectCode: "2201",
                 debitNu: null,
                 creditNu: voucher.amountNu,
               },
-            ];
+            ]
+          : isPayment
+            ? [
+                ...budgetDebitRows,
+                ...(voucher.tdsNu > 0
+                  ? [
+                      {
+                        broadHead: "Liability",
+                        account: `2102 - ${voucher.tdsRate}% TDS Payable`,
+                        objectCode: "2102",
+                        debitNu: null,
+                        creditNu: voucher.tdsNu,
+                      },
+                    ]
+                  : []),
+                ...(voucher.advanceRecoveryNu > 0
+                  ? [
+                      {
+                        broadHead: "Recovery",
+                        account: `1102 - Advance Receivable - ${voucher.advanceRecoveryVoucherNumber ?? "Outstanding advance"}`,
+                        objectCode: "1102",
+                        debitNu: null,
+                        creditNu: voucher.advanceRecoveryNu,
+                      },
+                    ]
+                  : []),
+                {
+                  broadHead: "Bank",
+                  account: `1001 - Pelsung Operating Account - ${voucher.payee}`,
+                  objectCode: "1001",
+                  debitNu: null,
+                  creditNu: voucher.netPaymentNu,
+                },
+              ]
+            : [
+                ...budgetDebitRows,
+                {
+                  broadHead: "Payable",
+                  account: `1001 - Bank / Payable - ${voucher.payee}`,
+                  objectCode: "1001",
+                  debitNu: null,
+                  creditNu: voucher.amountNu,
+                },
+              ];
 
   const financingSource = isBudgetPayroll
     ? (activity?.financing ?? "Not recorded")
@@ -260,14 +296,19 @@ export function VoucherPrintModal({
       ? "Payroll control"
       : isAdvance
         ? "Not applicable — advance"
-        : isReceipt
+        : isReceipt && !isRefund
           ? `Fund received from ${voucher.payee}`
           : Array.from(new Set(voucherAllocations.map((line) => line.financing))).join(", ") || "Not recorded";
 
   const bankEffectLabel =
-    isReceipt || isAdvance || ["net", "combined", "tds_hc_remittance", "supplier_tds_remittance"].includes(voucher.payrollEntryType ?? "")
-      ? "Bank Effect"
-      : "Cash Balance";
+    isReceipt && isCashLedger
+      ? "Cash Effect"
+      : isReceipt ||
+          isAdvance ||
+          isDirectTransaction ||
+          ["net", "combined", "tds_hc_remittance", "supplier_tds_remittance"].includes(voucher.payrollEntryType ?? "")
+        ? "Bank Effect"
+        : "Cash Balance";
 
   return (
     <Portal>
@@ -304,8 +345,8 @@ export function VoucherPrintModal({
           <section className="voucher-print-metadata">
             <dl>
               <div>
-                <dt>Bank Account No.</dt>
-                <dd>: 110116024748</dd>
+                <dt>{isCashLedger ? "Ledger" : "Bank Account No."}</dt>
+                <dd>: {isCashLedger ? ledgerAccount : (ledger?.accountNumber ?? "110116024748")}</dd>
               </div>
             </dl>
             <dl>
@@ -326,8 +367,8 @@ export function VoucherPrintModal({
                 <dd>: {voucher.status}</dd>
               </div>
               <div>
-                <dt>Payment Mode</dt>
-                <dd>: Bank</dd>
+                <dt>{isReceipt ? "Received Into" : "Payment Mode"}</dt>
+                <dd>: {isCashLedger ? "Cash" : isDirectTransaction ? "Direct bank transaction" : "Bank"}</dd>
               </div>
             </dl>
           </section>
@@ -436,7 +477,9 @@ export function VoucherPrintModal({
                   :{" "}
                   {isReceipt
                     ? `+ ${money.format(bankEffectNu)}`
-                    : isAdvance ||
+                    : isDirectTransaction
+                      ? "Nil — direct transaction"
+                      : isAdvance ||
                         ["net", "combined", "tds_hc_remittance", "supplier_tds_remittance"].includes(
                           voucher.payrollEntryType ?? "",
                         )
@@ -454,7 +497,7 @@ export function VoucherPrintModal({
                       : money.format(availableBudgetNu)
                     : isPayroll
                       ? "Not applicable — payroll control"
-                      : isAdvance || isReceipt
+                      : isAdvance || (isReceipt && !isRefund)
                         ? "Not applicable — no budget impact"
                         : voucherAllocations.length > 1
                           ? "Multiple activities — see allocation rows"
@@ -514,7 +557,7 @@ export function VoucherPrintModal({
             </p>
             <p>
               <strong>
-                {isReceipt ? "Bank Receipt" : "Net Payment"}
+                {isReceipt ? (isCashLedger ? "Cash Receipt" : "Bank Receipt") : "Net Payment"}
                 <br />
                 NU. :
               </strong>
@@ -565,7 +608,7 @@ export function VoucherPrintModal({
 
           <section className="voucher-payment-receipt">
             <div>
-              <strong>{isReceipt ? "Fund Receipt Confirmed" : "Received Payment"}</strong>
+              <strong>{isReceipt ? "Receipt Confirmed" : "Received Payment"}</strong>
               <p>{money.format(voucher.netPaymentNu)}</p>
               <span>Name, Signature &amp; Date.</span>
             </div>

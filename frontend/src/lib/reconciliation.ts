@@ -4,14 +4,14 @@
  * Mirrors `backend/src/modules/reconciliation/reconciliation.service.ts`
  * (`loadCashBookPosition`). The cash book is built from posted vouchers dated
  * on or before the end of the statement month:
- *   • total funds received  — sum of posted Receipt vouchers
+ *   • total funds received  — sum of posted Receipt vouchers into the bank ledger
  *   • closing cash-book bal. — signed bank effect of every posted voucher
  *   • fund withdrawn         — funds received less the closing balance
  */
 
 import { isPostedStatus, voucherBankEffectNu } from "@/lib/vouchers";
 import { currentBhutanMonth, fiscalYearMonthOptions, roundNu } from "@/lib/format";
-import { OPERATING_BANK_ACCOUNT } from "@/lib/reference";
+import { OPERATING_BANK_ACCOUNT, isBankLedger } from "@/lib/reference";
 import type { MonthClosure, Voucher } from "@/types";
 
 /**
@@ -52,7 +52,7 @@ export function cashBookPositionForMonth(vouchers: Voucher[], statementMonth: st
   );
   const totalFundsReceivedNu = roundNu(
     posted
-      .filter((voucher) => voucher.voucherType === "Receipt")
+      .filter((voucher) => voucher.voucherType === "Receipt" && isBankLedger(voucher.ledgerCode))
       .reduce((sum, voucher) => sum + Number(voucher.amountNu), 0),
   );
   const closingCashBookBalanceNu = roundNu(

@@ -2,6 +2,7 @@
 
 import { Empty, Status } from "@/components/ui/primitives";
 import { money, tableDate } from "@/lib/format";
+import { findLedger } from "@/lib/reference";
 import type { Voucher } from "@/types";
 
 /** Payroll and remittance vouchers are shown by their function, not their type. */
@@ -20,9 +21,37 @@ export const voucherDisplayType = (voucher: Voucher): string => {
     case "supplier_tds_remittance":
       return "TDS Remittance";
     default:
+      if (voucher.voucherType === "DT") return "Direct Transaction";
+      if (voucher.voucherType === "Receipt") return voucher.receiptCategory === "Refund" ? "Refund Receipt" : "Receipt";
       return voucher.voucherType;
   }
 };
+
+/** "Bank" / "Cash in hand" — where a receipt's money landed, or which bank a DT went through. */
+export const voucherLedgerLabel = (voucher: Voucher): string => {
+  const ledger = findLedger(voucher.ledgerCode);
+  if (!ledger) return "Bank";
+  return ledger.kind === "cash" ? "Cash in hand" : `Bank A/C ${ledger.accountNumber}`;
+};
+
+/** "bank" / "cash in hand", for sentences such as "increased the bank balance". */
+export const voucherBalanceName = (voucher: Voucher): string =>
+  findLedger(voucher.ledgerCode)?.kind === "cash" ? "cash in hand" : "bank";
+
+function BudgetLineList({ voucher }: { voucher: Voucher }) {
+  return (
+    <div className="voucher-account-lines">
+      {voucher.budgetLines.map((line) => (
+        <div key={line.id}>
+          <span>
+            <b className="obc-code">{line.obc}</b> {line.activity}
+          </span>
+          <strong>{money.format(line.amountNu)}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Aggregated payroll and remittance vouchers show their own deduction lines. */
 export const showsStandardVoucherDeductions = (voucher: Voucher): boolean =>
@@ -105,11 +134,27 @@ export function VoucherAccount({ voucher }: { voucher: Voucher }) {
       </>
     );
   }
+  if (voucher.voucherType === "Receipt" && voucher.budgetLines.length) {
+    return (
+      <>
+        <BudgetLineList voucher={voucher} />
+        <small>Refund credited to budget · {voucherLedgerLabel(voucher)} increase</small>
+      </>
+    );
+  }
   if (voucher.voucherType === "Receipt") {
     return (
       <>
-        <span className="obc-code">FUND-REC</span> Fund Received from {voucher.payee}
-        <small>Bank increase · No budget impact</small>
+        <span className="obc-code">{voucher.obc}</span> {voucher.activity}
+        <small>{voucherLedgerLabel(voucher)} increase · No budget impact</small>
+      </>
+    );
+  }
+  if (voucher.voucherType === "DT") {
+    return (
+      <>
+        <BudgetLineList voucher={voucher} />
+        <small>Direct transaction via {voucherLedgerLabel(voucher)} · No bank balance effect</small>
       </>
     );
   }
@@ -121,20 +166,7 @@ export function VoucherAccount({ voucher }: { voucher: Voucher }) {
       </>
     );
   }
-  if (voucher.budgetLines.length) {
-    return (
-      <div className="voucher-account-lines">
-        {voucher.budgetLines.map((line) => (
-          <div key={line.id}>
-            <span>
-              <b className="obc-code">{line.obc}</b> {line.activity}
-            </span>
-            <strong>{money.format(line.amountNu)}</strong>
-          </div>
-        ))}
-      </div>
-    );
-  }
+  if (voucher.budgetLines.length) return <BudgetLineList voucher={voucher} />;
   return (
     <>
       <span className="obc-code">{voucher.obc}</span> {voucher.activity}

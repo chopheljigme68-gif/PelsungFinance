@@ -74,6 +74,7 @@ function Reports({ data }: { data: AccountingData }) {
   const grossExpenditure = previewEntries
     .filter((entry) => entry.direction === "payment" && entry.amountNu > 0)
     .reduce((sum, entry) => sum + entry.amountNu, 0);
+  // Negative lines: authorised reversals and refund receipts credited back.
   const expenditureReversals = previewEntries
     .filter((entry) => entry.direction === "payment" && entry.amountNu < 0)
     .reduce((sum, entry) => sum + Math.abs(entry.amountNu), 0);
@@ -442,7 +443,7 @@ function Reports({ data }: { data: AccountingData }) {
                     <strong>{money.format(grossExpenditure)}</strong>
                   </div>
                   <div>
-                    <span>Authorised reversals</span>
+                    <span>Reversals &amp; refunds</span>
                     <strong>{money.format(expenditureReversals)}</strong>
                   </div>
                   <div>
@@ -478,7 +479,7 @@ function Reports({ data }: { data: AccountingData }) {
                           <td>
                             <strong>{entry.reference}</strong>
                           </td>
-                          <td>{entry.voucherType}</td>
+                          <td>{entry.isRefund ? "Refund" : entry.voucherType}</td>
                           <td>{entry.billReference ?? "—"}</td>
                           <td>{entry.payee}</td>
                           <td>{entry.particulars}</td>
@@ -555,6 +556,7 @@ function Reports({ data }: { data: AccountingData }) {
                           <td>{voucherDate(entry.date)}</td>
                           <td>
                             <strong>{entry.reference}</strong>
+                            <small>Via {entry.ledger}</small>
                           </td>
                           <td>{entry.billReference ?? "—"}</td>
                           <td>{entry.payee}</td>

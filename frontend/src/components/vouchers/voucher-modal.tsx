@@ -6,9 +6,20 @@ import { ApiError, api } from "@/lib/api";
 import { fiscalYearEndDate, fiscalYearStartDate } from "@/lib/fiscal-year";
 import { currentBhutanDate, currentBhutanMonth, fiscalYearLabel, money, roundNu } from "@/lib/format";
 import { activeAccountingMonth } from "@/lib/reconciliation";
-import { BANKS } from "@/lib/reference";
+import { DIRECT_TRANSACTION_ACCOUNT, ledgerAccountName } from "@/lib/ledger";
+import { BANKS, BANK_LEDGER_CODE, LEDGER_ACCOUNTS, findLedger } from "@/lib/reference";
 import { outstandingAdvanceBalance } from "@/lib/totals";
-import { calculateVoucherDeductions, TPN_PATTERN, isPostedStatus, voucherBankEffectNu } from "@/lib/vouchers";
+import {
+  RECEIPT_CATEGORIES,
+  TPN_PATTERN,
+  budgetLineSign,
+  calculateVoucherDeductions,
+  isPostedStatus,
+  receiptCreditsBudget,
+  voucherBankEffectNu,
+  voucherCashEffectNu,
+  type ReceiptCategory,
+} from "@/lib/vouchers";
 import { useApp } from "@/providers/app-provider";
 import type { Activity, MonthClosure, TpnRegistration, Voucher } from "@/types";
 
@@ -33,9 +44,12 @@ type BudgetLineDraft = { key: number; activityId: number; amount: string };
 /**
  * Voucher preparation.
  *
- * Payments and journals are allocated across one or more approved activities
- * and the allocation total *is* the voucher amount; advances and fund receipts
- * take a single amount and touch no budget at all. Deductions are previewed
+ * Payments, journals and direct transactions (DT) are allocated across one or
+ * more approved activities and the allocation total *is* the voucher amount. A
+ * refund receipt is allocated the same way but credits the activities back.
+ * Advances, fund receipts and other receipts take a single amount and touch no
+ * budget at all. Receipts land in the bank or cash ledger; a DT names its bank
+ * ledger but never moves the system bank balance. Deductions are previewed
  * with the same arithmetic the server applies.
  */
 export function VoucherModal({
@@ -44,6 +58,7 @@ export function VoucherModal({
   tpnRegistrations,
   monthClosures,
   bankBalanceNu,
+  cashInHandNu,
   onClose,
 }: {
   activities: Activity[];
@@ -51,6 +66,7 @@ export function VoucherModal({
   tpnRegistrations: TpnRegistration[];
   monthClosures: MonthClosure[];
   bankBalanceNu: number;
+  cashInHandNu: number;
   onClose: () => void;
 }) {
   const { fiscalYear, can, run } = useApp();
@@ -81,14 +97,25 @@ export function VoucherModal({
   const [tdsRate, setTdsRate] = useState("0");
   const [advanceRecoveryVoucherId, setAdvanceRecoveryVoucherId] = useState("");
   const [advanceRecoveryNu, setAdvanceRecoveryNu] = useState("0");
+  const [receiptCategory, setReceiptCategory] = useState<ReceiptCategory>("Fund receipt");
+  const [ledgerCode, setLedgerCode] = useState(BANK_LEDGER_CODE);
   const [date, setDate] = useState(() => defaultTransactionDate(fiscalYear, activeMonth));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   const isAdvance = voucherType === "Advance";
-  const isFundReceipt = voucherType === "Receipt";
+  const isReceipt = voucherType === "Receipt";
   const isPayment = voucherType === "Payment";
-  const hasNoBudgetImpact = isAdvance || isFundReceipt;
+  const isDirectTransaction = voucherType === "DT";
+  const isRefund = isReceipt && receiptCreditsBudget(receiptCategory);
+  const spendsBudget = budgetLineSign(voucherType) === 1;
+  const hasNoBudgetImpact = !spendsBudget && !isRefund;
+  const choosesLedger = isReceipt || isDirectTransaction;
+  // A DT always goes through a bank ledger; only a receipt may land in cash.
+  const ledgerOptions = LEDGER_ACCOUNTS.filter((ledger) => isReceipt || ledger.kind === "bank");
+  const effectiveLedgerCode = choosesLedger ? ledgerCode : BANK_LEDGER_CODE;
+  const selectedLedger = findLedger(effectiveLedgerCode) ?? LEDGER_ACCOUNTS[0];
+  const isCashLedger = selectedLedger.kind === "cash";
 
   const allocationDetails = budgetLines.map((line) => {
     const activity = activities.find((item) => item.id === line.activityId);
@@ -97,6 +124,8 @@ export function VoucherModal({
       activity,
       amountNu: Math.max(roundNu(Number(line.amount) || 0), 0),
       availableNu: activity ? activity.approvedNu - activity.committedNu : 0,
+      // A refund can give back at most what has been spent on the activity.
+      refundableNu: activity ? Math.max(activity.committedNu, 0) : 0,
     };
   });
   const allocatedAmountNu = allocationDetails.reduce((sum, line) => sum + line.amountNu, 0);
@@ -130,12 +159,19 @@ export function VoucherModal({
   const isRegisteredTpn = registeredTpns.some((registration) => registration.tpn === normalizedTpn);
   const validTpn = !requiresTpn || (TPN_PATTERN.test(normalizedTpn) && isRegisteredTpn);
 
-  const currentVoucherBankEffectNu = voucherBankEffectNu({
+  const effectVoucher = {
     voucherType,
     amountNu: grossAmountNu,
     netPaymentNu: Math.max(netPaymentNu, 0),
-  });
-  const projectedBankBalanceNu = bankBalanceNu + currentVoucherBankEffectNu;
+    ledgerCode: effectiveLedgerCode,
+  };
+  const currentVoucherBankEffectNu = voucherBankEffectNu(effectVoucher);
+  const currentVoucherCashEffectNu = voucherCashEffectNu(effectVoucher);
+  // A cash receipt is checked against cash in hand; everything else against the bank.
+  const balanceName = isCashLedger ? "cash in hand" : "bank balance";
+  const currentBalanceNu = isCashLedger ? cashInHandNu : bankBalanceNu;
+  const currentVoucherEffectNu = isCashLedger ? currentVoucherCashEffectNu : currentVoucherBankEffectNu;
+  const projectedBalanceNu = currentBalanceNu + currentVoucherEffectNu;
 
   const updateBudgetLine = (key: number, changes: Partial<{ activityId: number; amount: string }>) => {
     setBudgetLines((current) => current.map((line) => (line.key === key ? { ...line, ...changes } : line)));
@@ -164,12 +200,24 @@ export function VoucherModal({
 
     const invalidAllocation = allocationDetails.find((line) => !line.activity || line.amountNu <= 0);
     if (!hasNoBudgetImpact && invalidAllocation) {
-      setError("Select an approved budget activity and enter a positive amount for every allocation line.");
+      setError(
+        isRefund
+          ? "Select the budget activity being refunded and enter a positive amount for every line."
+          : "Select an approved budget activity and enter a positive amount for every allocation line.",
+      );
+      return;
+    }
+
+    const overRefund = allocationDetails.find((line) => line.amountNu > line.refundableNu);
+    if (isRefund && overRefund) {
+      setError(
+        `${overRefund.activity?.obc ?? "Selected activity"} cannot take a refund of ${money.format(overRefund.amountNu)} because only ${money.format(overRefund.refundableNu)} has been spent on it.`,
+      );
       return;
     }
 
     const overBudgetAllocation = allocationDetails.find((line) => line.amountNu > line.availableNu);
-    if (!hasNoBudgetImpact && overBudgetAllocation) {
+    if (spendsBudget && overBudgetAllocation) {
       setError(
         `${overBudgetAllocation.activity?.obc ?? "Selected activity"} cannot accept ${money.format(overBudgetAllocation.amountNu)} because only ${money.format(overBudgetAllocation.availableNu)} is available.`,
       );
@@ -221,12 +269,18 @@ export function VoucherModal({
           budgetLines: hasNoBudgetImpact
             ? []
             : allocationDetails.map((line) => ({ activityId: line.activityId, amountNu: line.amountNu })),
+          ledgerCode: choosesLedger ? effectiveLedgerCode : null,
+          receiptCategory: isReceipt ? receiptCategory : null,
         }),
-      isFundReceipt
-        ? "Fund receipt submitted for approval. It will increase the bank balance only after approval and will not affect the budget."
-        : isAdvance
-          ? "Advance submitted for approval. It will affect the bank position only after approval and will not affect the budget."
-          : "Voucher submitted for approval.",
+      isRefund
+        ? `Refund submitted for approval. On approval it will increase the ${balanceName} and credit the budget activity back.`
+        : isReceipt
+          ? `Receipt submitted for approval. It will increase the ${balanceName} only after approval and will not affect the budget.`
+          : isDirectTransaction
+            ? "Direct transaction submitted for approval. On approval it will update the budget activity; the bank balance is not affected."
+            : isAdvance
+              ? "Advance submitted for approval. It will affect the bank position only after approval and will not affect the budget."
+              : "Voucher submitted for approval.",
       {
         onError: (apiError: ApiError) => {
           // Budget conflicts carry the live balance; show it beside the message.
@@ -249,11 +303,13 @@ export function VoucherModal({
         <header>
           <div>
             <span className="eyebrow dark">Voucher preparation · {fiscalYearLabel(fiscalYear)}</span>
-            <h2>{isFundReceipt ? "Record Fund Receipt" : "Prepare voucher"}</h2>
+            <h2>{isReceipt ? "Record Receipt" : isDirectTransaction ? "Record Direct Transaction" : "Prepare voucher"}</h2>
             <p>
-              {isFundReceipt
-                ? "Record funds deposited into the Pelsung operating bank account by HMS or another funding agency."
-                : "Enter the same particulars that will appear on the approved printable voucher."}
+              {isReceipt
+                ? "Record funds received from others — fund releases, cash receipts and refunds — into the bank or cash in hand."
+                : isDirectTransaction
+                  ? "Record a transaction the bank carried out directly. It is charged to the budget but does not move the system bank balance."
+                  : "Enter the same particulars that will appear on the approved printable voucher."}
             </p>
           </div>
           <button type="button" aria-label="Close" onClick={onClose}>
@@ -263,16 +319,16 @@ export function VoucherModal({
 
         <section className="voucher-system-strip" aria-label="Voucher system details">
           <div>
-            <span>Bank Account No.</span>
-            <strong>110116024748</strong>
+            <span>{isCashLedger ? "Ledger" : "Bank Account No."}</span>
+            <strong>{isCashLedger ? ledgerAccountName(selectedLedger.code) : selectedLedger.accountNumber}</strong>
           </div>
           <div className="voucher-current-bank-balance">
-            <span>Current Bank Balance</span>
-            <strong>{money.format(bankBalanceNu)}</strong>
+            <span>{isCashLedger ? "Current Cash in Hand" : "Current Bank Balance"}</span>
+            <strong>{money.format(currentBalanceNu)}</strong>
           </div>
           <div>
-            <span>Payment Mode</span>
-            <strong>Bank</strong>
+            <span>{isReceipt ? "Received Into" : "Payment Mode"}</span>
+            <strong>{isCashLedger ? "Cash" : isDirectTransaction ? "Direct bank transaction" : "Bank"}</strong>
           </div>
           <div>
             <span>Voucher Number</span>
@@ -292,12 +348,17 @@ export function VoucherModal({
               value={voucherType}
               onChange={(event) => {
                 setVoucherType(event.target.value);
+                // Cash is a receipt-only ledger; fall back to the bank for anything else.
+                if (event.target.value !== "Receipt" && findLedger(ledgerCode)?.kind !== "bank") {
+                  setLedgerCode(BANK_LEDGER_CODE);
+                }
                 setError("");
               }}
             >
               {canPrepareVoucher && <option value="Payment">Payment</option>}
               {canPrepareVoucher && <option value="Journal">Journal</option>}
-              {canRecordFundReceipt && <option value="Receipt">Fund Receipt</option>}
+              {canRecordFundReceipt && <option value="Receipt">Receipt</option>}
+              {canPrepareVoucher && <option value="DT">Direct Transaction (DT)</option>}
               {canPrepareVoucher && <option value="Advance">Advance</option>}
             </select>
           </label>
@@ -312,6 +373,45 @@ export function VoucherModal({
               required
             />
           </label>
+          {isReceipt && (
+            <label>
+              Receipt category
+              <select
+                value={receiptCategory}
+                onChange={(event) => {
+                  setReceiptCategory(event.target.value as ReceiptCategory);
+                  setError("");
+                }}
+              >
+                {RECEIPT_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {category === "Refund" ? "Refund (credits a budget activity)" : category}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {choosesLedger && (
+            <label>
+              {isReceipt ? "Received into" : "Bank ledger"}
+              <select
+                value={effectiveLedgerCode}
+                onChange={(event) => {
+                  setLedgerCode(event.target.value);
+                  setError("");
+                }}
+                required
+              >
+                {ledgerOptions.map((ledger) => (
+                  <option key={ledger.code} value={ledger.code}>
+                    {ledger.kind === "bank"
+                      ? `${ledger.code} · ${ledger.bankName} A/C ${ledger.accountNumber}`
+                      : `${ledger.code} · ${ledger.name}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           {isAdvance ? (
             <>
@@ -335,39 +435,74 @@ export function VoucherModal({
                 </div>
               </section>
             </>
-          ) : isFundReceipt ? (
+          ) : isReceipt && !isRefund ? (
             <>
-              <div className="form-section-label wide">Fund receipt accounting</div>
+              <div className="form-section-label wide">Receipt accounting</div>
               <section
                 className="advance-accounting-preview fund-receipt-accounting-preview wide"
-                aria-label="Fund receipt accounting treatment"
+                aria-label="Receipt accounting treatment"
               >
                 <div>
                   <span>Debit account</span>
-                  <strong>1001 · Bank</strong>
+                  <strong>{ledgerAccountName(effectiveLedgerCode)}</strong>
                 </div>
                 <div>
                   <span>Credit account</span>
-                  <strong>3001 · Fund Received</strong>
+                  <strong>{receiptCategory === "Other receipt" ? "3002 · Other Receipts" : "3001 · Fund Received"}</strong>
                 </div>
                 <div>
                   <span>Budget impact</span>
                   <strong>Nu. 0 · No budget activity</strong>
                 </div>
                 <div>
-                  <span>Bank impact on approval</span>
+                  <span>{isCashLedger ? "Cash" : "Bank"} impact on approval</span>
                   <strong>+ {money.format(Math.max(Number(amount) || 0, 0))}</strong>
                 </div>
               </section>
             </>
           ) : (
             <>
-              <div className="form-section-label wide">Budget activity allocations</div>
+              {(isRefund || isDirectTransaction) && (
+                <>
+                  <div className="form-section-label wide">{isRefund ? "Refund accounting" : "Direct transaction accounting"}</div>
+                  <section
+                    className="advance-accounting-preview wide"
+                    aria-label={isRefund ? "Refund accounting treatment" : "Direct transaction accounting treatment"}
+                  >
+                    <div>
+                      <span>Debit account</span>
+                      <strong>{isRefund ? ledgerAccountName(effectiveLedgerCode) : "Budget activities below"}</strong>
+                    </div>
+                    <div>
+                      <span>Credit account</span>
+                      <strong>{isRefund ? "Budget activities below" : DIRECT_TRANSACTION_ACCOUNT}</strong>
+                    </div>
+                    <div>
+                      <span>Budget impact on approval</span>
+                      <strong>
+                        {isRefund ? "+ " : "− "}
+                        {money.format(allocatedAmountNu)} available
+                      </strong>
+                    </div>
+                    <div>
+                      <span>{isCashLedger ? "Cash" : "Bank"} impact on approval</span>
+                      <strong>{isRefund ? `+ ${money.format(allocatedAmountNu)}` : "Nu. 0 · Not affected"}</strong>
+                    </div>
+                  </section>
+                </>
+              )}
+              <div className="form-section-label wide">
+                {isRefund ? "Budget activities refunded" : "Budget activity allocations"}
+              </div>
               <section className="voucher-budget-lines wide" aria-label="Voucher budget activity allocations">
                 <header>
                   <div>
-                    <strong>Allocate this voucher</strong>
-                    <span>Select one or more approved activities for the same payee.</span>
+                    <strong>{isRefund ? "Credit this refund back" : "Allocate this voucher"}</strong>
+                    <span>
+                      {isRefund
+                        ? "Select the activities the original expenditure was charged to."
+                        : "Select one or more approved activities for the same payee."}
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -397,12 +532,12 @@ export function VoucherModal({
                       />
                     </label>
                     <label>
-                      Allocated amount (Nu.)
+                      {isRefund ? "Refunded amount (Nu.)" : "Allocated amount (Nu.)"}
                       <input
                         type="number"
                         min="1"
                         step="0.01"
-                        max={line.availableNu}
+                        max={isRefund ? line.refundableNu : line.availableNu}
                         value={line.amount}
                         onChange={(event) => updateBudgetLine(line.key, { amount: event.target.value })}
                         placeholder="0"
@@ -410,8 +545,8 @@ export function VoucherModal({
                       />
                     </label>
                     <div className="voucher-budget-line-balance">
-                      <span>Available</span>
-                      <strong>{money.format(line.availableNu)}</strong>
+                      <span>{isRefund ? "Spent to date" : "Available"}</span>
+                      <strong>{money.format(isRefund ? line.refundableNu : line.availableNu)}</strong>
                       <small>
                         {line.activity ? `Programme (recommended): ${line.activity.category}` : "Select an activity"}
                       </small>
@@ -428,31 +563,37 @@ export function VoucherModal({
                   </div>
                 ))}
                 <footer>
-                  <span>Total voucher amount</span>
+                  <span>{isRefund ? "Total refund received" : "Total voucher amount"}</span>
                   <strong>{money.format(allocatedAmountNu)}</strong>
                 </footer>
               </section>
             </>
           )}
 
-          <div className="form-section-label wide">{isFundReceipt ? "Fund receipt particulars" : "Payment particulars"}</div>
+          <div className="form-section-label wide">
+            {isReceipt ? "Receipt particulars" : isDirectTransaction ? "Transaction particulars" : "Payment particulars"}
+          </div>
           <label className="wide">
-            {isFundReceipt ? "Received from" : isAdvance ? "Advance recipient" : "Paid to"}
+            {isReceipt ? "Received from" : isAdvance ? "Advance recipient" : isDirectTransaction ? "Beneficiary / party" : "Paid to"}
             <input
               maxLength={160}
               value={payee}
               onChange={(event) => setPayee(event.target.value)}
               placeholder={
-                isFundReceipt
-                  ? "Enter funding agency name"
-                  : isAdvance
-                    ? "Enter the person or organisation receiving the advance"
-                    : "Enter payee name"
+                isRefund
+                  ? "Enter who refunded the money"
+                  : isReceipt
+                    ? "Enter funding agency, person or organisation"
+                    : isAdvance
+                      ? "Enter the person or organisation receiving the advance"
+                      : isDirectTransaction
+                        ? "Enter who the bank paid or charged"
+                        : "Enter payee name"
               }
               required
             />
           </label>
-          {!isFundReceipt && (
+          {!isReceipt && (
             <>
               <label>
                 Payee bank <small>Optional</small>
@@ -477,17 +618,24 @@ export function VoucherModal({
             </>
           )}
           <label>
-            {isFundReceipt ? "Fund advice / receipt number" : "GRN / Bill number"} <small>Optional</small>
+            {isReceipt ? "Fund advice / receipt number" : isDirectTransaction ? "Bank advice / statement reference" : "GRN / Bill number"}{" "}
+            <small>Optional</small>
             <input
               maxLength={120}
               value={billReference}
               onChange={(event) => setBillReference(event.target.value)}
-              placeholder={isFundReceipt ? "Enter funding reference" : "Supporting document reference"}
+              placeholder={
+                isReceipt
+                  ? "Enter receipt or funding reference"
+                  : isDirectTransaction
+                    ? "Enter the bank's debit advice reference"
+                    : "Supporting document reference"
+              }
             />
           </label>
           {hasNoBudgetImpact ? (
             <label>
-              {isFundReceipt ? "Fund received (Nu.)" : "Amount (Nu.)"}
+              {isReceipt ? "Amount received (Nu.)" : "Amount (Nu.)"}
               <input
                 type="number"
                 min="1"
@@ -503,7 +651,7 @@ export function VoucherModal({
             </label>
           ) : (
             <label>
-              {isPayment ? "Gross amount (Nu.)" : "Total amount (Nu.)"}
+              {isPayment ? "Gross amount (Nu.)" : isRefund ? "Refund amount (Nu.)" : "Total amount (Nu.)"}
               <input
                 type="number"
                 value={allocatedAmountNu || ""}
@@ -520,11 +668,15 @@ export function VoucherModal({
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               placeholder={
-                isFundReceipt
-                  ? "Purpose or reference for the fund received"
-                  : isAdvance
-                    ? "Purpose and terms of the advance"
-                    : "Purpose of payment"
+                isRefund
+                  ? "What was refunded and against which original voucher"
+                  : isReceipt
+                    ? "Purpose or reference for the money received"
+                    : isDirectTransaction
+                      ? "What the bank paid or charged directly"
+                      : isAdvance
+                        ? "Purpose and terms of the advance"
+                        : "Purpose of payment"
               }
               required
             />
@@ -654,28 +806,32 @@ export function VoucherModal({
             </>
           )}
 
-          <div className="form-section-label wide">Bank balance check</div>
-          <section className="voucher-bank-preview wide" aria-label="Projected bank balance after voucher approval">
+          <div className="form-section-label wide">{isCashLedger ? "Cash in hand check" : "Bank balance check"}</div>
+          <section className="voucher-bank-preview wide" aria-label={`Projected ${balanceName} after voucher approval`}>
             <div>
-              <span>Current bank balance</span>
-              <strong>{money.format(bankBalanceNu)}</strong>
+              <span>Current {balanceName}</span>
+              <strong>{money.format(currentBalanceNu)}</strong>
             </div>
             <div>
               <span>This voucher on approval</span>
               <strong>
-                {currentVoucherBankEffectNu > 0 ? "+ " : currentVoucherBankEffectNu < 0 ? "− " : ""}
-                {money.format(Math.abs(currentVoucherBankEffectNu))}
+                {currentVoucherEffectNu > 0 ? "+ " : currentVoucherEffectNu < 0 ? "− " : ""}
+                {money.format(Math.abs(currentVoucherEffectNu))}
               </strong>
             </div>
             <div>
-              <span>Projected bank balance</span>
-              <strong>{money.format(projectedBankBalanceNu)}</strong>
+              <span>Projected {balanceName}</span>
+              <strong>{money.format(projectedBalanceNu)}</strong>
             </div>
           </section>
           <p className="voucher-formula-note wide">
-            {isFundReceipt
-              ? "The fund receipt increases the bank balance only after approval. It has no impact on any approved budget activity."
-              : "Payments reduce it by the net amount, advances reduce it by the gross amount, and journals have no bank effect."}
+            {isRefund
+              ? `The refund increases the ${balanceName} and credits the selected budget activities back, only after approval.`
+              : isReceipt
+                ? `The receipt increases the ${balanceName} only after approval. It has no impact on any approved budget activity.`
+                : isDirectTransaction
+                  ? "A direct transaction is charged to the budget on approval, but the bank already moved the money, so the system bank balance is not changed."
+                  : "Payments reduce it by the net amount, advances reduce it by the gross amount, and journals have no bank effect."}
           </p>
         </div>
 
@@ -690,7 +846,13 @@ export function VoucherModal({
             Cancel
           </button>
           <button className="primary-button" disabled={saving}>
-            {saving ? "Saving…" : isFundReceipt ? "Submit fund receipt for approval" : "Submit for approval"}
+            {saving
+              ? "Saving…"
+              : isReceipt
+                ? "Submit receipt for approval"
+                : isDirectTransaction
+                  ? "Submit direct transaction for approval"
+                  : "Submit for approval"}
           </button>
         </footer>
       </form>

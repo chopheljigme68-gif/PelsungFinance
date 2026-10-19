@@ -11,7 +11,7 @@ import type { AccountingData } from "@/types";
 /* -------------------------------------------------------------------------- */
 
 export function AccountsHub({ data }: { data: AccountingData }) {
-  const bankBalanceNu = workspaceTotals(data).bankMovement;
+  const { bankMovement: bankBalanceNu, cashInHand } = workspaceTotals(data);
   const voucherCount = data.vouchers.length;
   const reconciledMonths = data.bankReconciliations.filter((item) =>
     ["Reconciled", "Closed"].includes(item.status),
@@ -31,6 +31,7 @@ export function AccountsHub({ data }: { data: AccountingData }) {
           <span>Operating bank balance</span>
           <strong>{money.format(bankBalanceNu)}</strong>
           <small>A/C {OPERATING_BANK_ACCOUNT}</small>
+          <small>Cash in hand {money.format(cashInHand)}</small>
         </div>
       </section>
 
@@ -40,7 +41,7 @@ export function AccountsHub({ data }: { data: AccountingData }) {
           <div>
             <small>Transaction processing</small>
             <strong>Vouchers</strong>
-            <p>Prepare, submit, approve, print and review payment, advance and receipt vouchers.</p>
+            <p>Prepare, submit, approve, print and review payment, receipt, direct transaction and advance vouchers.</p>
             <b>
               {voucherCount} voucher{voucherCount === 1 ? "" : "s"} in this financial year →
             </b>

@@ -60,12 +60,13 @@ function VoucherRegister({ data }: { data: AccountingData }) {
             <small>Operating bank account</small>
             <strong>110116024748</strong>
             <p>Balance calculated from approved and paid vouchers in {fiscalYearLabel(fiscalYear)}.</p>
+            <p>Cash in hand: {money.format(totals.cashInHand)}</p>
           </div>
         </div>
         <div>
           <small>Current bank balance</small>
           <strong>{money.format(totals.bankMovement)}</strong>
-          <p>Posted receipts less net payments and advances</p>
+          <p>Posted bank receipts less net payments and advances</p>
         </div>
         <div>
           <small>Pending voucher effect</small>
@@ -106,7 +107,7 @@ function VoucherRegister({ data }: { data: AccountingData }) {
         <div className="register-toolbar">
           <div>
             <h3>Voucher register</h3>
-            <p>{payMonthLabel(selectedVoucherMonth)} · Payment, journal, receipt and advance vouchers</p>
+            <p>{payMonthLabel(selectedVoucherMonth)} · Payment, journal, receipt, direct transaction and advance vouchers</p>
           </div>
           <div className="voucher-register-actions">
             <span className="fy-chip">
@@ -135,6 +136,7 @@ function VoucherRegister({ data }: { data: AccountingData }) {
           tpnRegistrations={data.tpnRegistrations}
           monthClosures={data.monthClosures}
           bankBalanceNu={totals.bankMovement}
+          cashInHandNu={totals.cashInHand}
           onClose={() => setEntryOpen(false)}
         />
       )}

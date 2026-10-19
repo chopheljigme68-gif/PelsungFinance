@@ -130,6 +130,10 @@ export type Voucher = {
   tdsNu: number;
   advanceRecoveryNu: number;
   advanceRecoveryVoucherId: number | null;
+  /** Money ledger the voucher moves: "1001" operating bank, "1002" cash in hand. */
+  ledgerCode: string;
+  /** Receipts only: "Fund receipt", "Refund" or "Other receipt". */
+  receiptCategory: string | null;
   advanceRecoveryVoucherNumber?: string | null;
   netPaymentNu: number;
   payrollRunId: number | null;

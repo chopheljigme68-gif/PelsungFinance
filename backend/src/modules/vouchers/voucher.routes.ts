@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { BANKS } from "../../domain/reference.js";
-import { ISO_DATE_PATTERN, VOUCHER_TYPES } from "../../domain/vouchers.js";
+import { BANKS, LEDGER_ACCOUNTS } from "../../domain/reference.js";
+import { ISO_DATE_PATTERN, RECEIPT_CATEGORIES, VOUCHER_TYPES } from "../../domain/vouchers.js";
 import { asyncHandler, validateBody, validateParams } from "../../lib/http.js";
 import { moneyNonNegative, moneyPositive } from "../../lib/money.js";
 import { currentUser, requireAnyPermission, requirePermission } from "../../middleware/auth.js";
@@ -49,6 +49,12 @@ const createVoucherSchema = z.object({
   transactionDate: z.string().regex(ISO_DATE_PATTERN, "Enter a valid transaction date."),
   budgetLines: z.array(budgetLineSchema).max(25).optional(),
   activityId: z.coerce.number().int().positive().nullish(),
+  ledgerCode: z
+    .string()
+    .trim()
+    .refine((v) => LEDGER_ACCOUNTS.some((ledger) => ledger.code === v), "Select a valid bank or cash ledger.")
+    .nullish(),
+  receiptCategory: z.enum(RECEIPT_CATEGORIES, { message: "Select a valid receipt category." }).nullish(),
 });
 
 const decisionSchema = z.object({

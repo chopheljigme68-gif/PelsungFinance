@@ -52,7 +52,7 @@ function Dashboard({ data }: { data: AccountingData }) {
         <Kpi
           label="Bank movement"
           value={money.format(totals.bankMovement)}
-          note={`${money.format(totals.outstandingAdvances)} outstanding advances`}
+          note={`${money.format(totals.cashInHand)} cash in hand · ${money.format(totals.outstandingAdvances)} outstanding advances`}
           tone="teal"
           icon="⇄"
         />

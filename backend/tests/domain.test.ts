@@ -19,10 +19,13 @@ import {
 } from "../src/domain/payroll-tax.js";
 import { can, rolePermissions } from "../src/domain/permissions.js";
 import {
+  budgetLineSign,
   calculateVoucherDeductions,
   formatVoucherNumber,
   highestVoucherSerial,
+  receiptCreditsBudget,
   voucherBankEffectNu,
+  voucherCashEffectNu,
 } from "../src/domain/vouchers.js";
 
 describe("Bhutan payroll tax — Rule 153 and Annexure I", () => {
@@ -110,11 +113,33 @@ describe("Voucher arithmetic", () => {
     assert.equal(voucherBankEffectNu({ voucherType: "Journal", amountNu: 9_000, netPaymentNu: 9_000 }), 0);
   });
 
+  it("routes receipts by ledger and keeps direct transactions off the bank", () => {
+    const receipt = { voucherType: "Receipt", amountNu: 2_500, netPaymentNu: 2_500 };
+    assert.equal(voucherBankEffectNu({ ...receipt, ledgerCode: "1001" }), 2_500);
+    assert.equal(voucherCashEffectNu({ ...receipt, ledgerCode: "1001" }), 0);
+    assert.equal(voucherBankEffectNu({ ...receipt, ledgerCode: "1002" }), 0);
+    assert.equal(voucherCashEffectNu({ ...receipt, ledgerCode: "1002" }), 2_500);
+    assert.equal(voucherBankEffectNu({ voucherType: "DT", amountNu: 7_000, netPaymentNu: 7_000, ledgerCode: "1001" }), 0);
+    assert.equal(voucherCashEffectNu({ voucherType: "DT", amountNu: 7_000, netPaymentNu: 7_000, ledgerCode: "1001" }), 0);
+  });
+
+  it("signs budget lines: spending adds, refunds give back, advances never touch", () => {
+    assert.equal(budgetLineSign("Payment"), 1);
+    assert.equal(budgetLineSign("Journal"), 1);
+    assert.equal(budgetLineSign("DT"), 1);
+    assert.equal(budgetLineSign("Receipt"), -1);
+    assert.equal(budgetLineSign("Advance"), 0);
+    assert.equal(receiptCreditsBudget("Refund"), true);
+    assert.equal(receiptCreditsBudget("Fund receipt"), false);
+    assert.equal(receiptCreditsBudget("Other receipt"), false);
+  });
+
   it("formats and reads voucher numbers", () => {
     assert.equal(formatVoucherNumber("Payment", 7, 3), "PV.7.03");
     assert.equal(formatVoucherNumber("Receipt", 12, 11), "RV.12.11");
     assert.equal(formatVoucherNumber("Advance", 1, 1), "AV.1.01");
     assert.equal(formatVoucherNumber("Journal", 9, 2), "JV.9.02");
+    assert.equal(formatVoucherNumber("DT", 8, 4), "DT.8.04");
     assert.equal(highestVoucherSerial(["PV.7.01", "PV.7.09", "PV.7.04"]), 9);
     assert.equal(highestVoucherSerial([]), 0);
   });
