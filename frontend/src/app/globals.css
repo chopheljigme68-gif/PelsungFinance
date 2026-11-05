@@ -50,6 +50,11 @@ button { cursor: pointer; }
 .login-button { width: 100%; min-height: 51px; margin-top: 4px; justify-content: space-between; padding: 0 19px; }
 .login-button span { font-size: 21px; font-weight: 400; }
 .form-error { margin: -6px 0 14px; padding: 10px 12px; border-radius: 6px; color: #9B2C3E; background: #EEF2F9; font-size: 13.5px; }
+.form-success { margin: 0 0 18px; padding: 12px 14px; border-radius: 6px; color: #14532D; background: #ECFDF3; font-size: 13.5px; line-height: 1.55; }
+.login-link { color: var(--teal); font-size: 13.5px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.forgot-link { display: block; width: fit-content; margin: -8px 0 18px auto; }
+.back-link { display: block; width: fit-content; margin: 18px auto 0; }
+.login-card .password-policy { margin: -4px 0 18px; }
 .auth-loading { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 14px; color: var(--muted); background: var(--canvas); font-size: 13.5px; }
 .auth-loading .loading-logo { width: 104px; filter: drop-shadow(0 8px 18px rgba(15,23,42,.16)); }
 

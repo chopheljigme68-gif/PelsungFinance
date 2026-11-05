@@ -88,6 +88,10 @@ export const api = {
   logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
   changePassword: (body: { currentPassword: string; newPassword: string; confirmPassword: string }) =>
     request<SessionResponse>("/api/auth/password", { method: "POST", body }),
+  forgotPassword: (username: string) =>
+    request<{ ok: true }>("/api/auth/forgot-password", { method: "POST", body: { username } }),
+  resetPassword: (body: { token: string; newPassword: string; confirmPassword: string }) =>
+    request<{ ok: true }>("/api/auth/reset-password", { method: "POST", body }),
 
   /* Read model ------------------------------------------------------------- */
   accounting: async (fiscalYear: string, signal?: AbortSignal) => {

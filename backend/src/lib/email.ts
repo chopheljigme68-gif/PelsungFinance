@@ -475,6 +475,45 @@ export async function sendInvitationEmail({
   });
 }
 
+type PasswordResetEmail = {
+  recipient: string;
+  displayName: string;
+  resetUrl: string;
+  expiresInMinutes: number;
+};
+
+export async function sendPasswordResetEmail({
+  recipient,
+  displayName,
+  resetUrl,
+  expiresInMinutes,
+}: PasswordResetEmail): Promise<string> {
+  const safe = { name: escapeHtml(displayName), resetUrl: escapeHtml(resetUrl) };
+
+  return deliver({
+    to: recipient,
+    idempotencyKey: randomUUID(),
+    subject: "Reset your Pelsung Finance password",
+    text: [
+      `Hello ${displayName},`,
+      "",
+      "We received a request to reset your Pelsung Finance password.",
+      `Open this link to choose a new password (it expires in ${expiresInMinutes} minutes and works once):`,
+      resetUrl,
+      "",
+      "If you did not ask for this, ignore this email. Your password will not change.",
+    ].join("\n"),
+    html: `<div style="font-family:Helvetica,Arial,sans-serif;color:#16324a;line-height:1.6;max-width:560px">
+        <h2 style="color:#0d7768">Reset your password</h2>
+        <p>Hello ${safe.name},</p>
+        <p>We received a request to reset your Pelsung Finance password.</p>
+        <p><a href="${safe.resetUrl}" style="display:inline-block;padding:10px 16px;border-radius:6px;color:#fff;background:#0d7768;text-decoration:none">Choose a new password</a></p>
+        <p>This link expires in ${expiresInMinutes} minutes and can be used once.</p>
+        <p style="font-size:12px;color:#647586">If you did not ask for this, ignore this email. Your password will not change.</p>
+      </div>`,
+  });
+}
+
 export async function sendPayrollPayslipEmail(payslip: PayrollPayslipEmail): Promise<string> {
   const period = payMonthLabel(payslip.payMonth);
   const safe = {

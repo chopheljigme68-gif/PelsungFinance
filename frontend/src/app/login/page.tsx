@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { PelsungLogo } from "@/components/ui/primitives";
@@ -89,6 +90,9 @@ export default function LoginPage() {
               required
             />
           </label>
+          <Link className="login-link forgot-link" href="/login/forgot-password">
+            Forgot password?
+          </Link>
           {error && (
             <div className="form-error" role="alert">
               {error}

@@ -49,3 +49,15 @@ export const authRateLimit = rateLimit({
   skipSuccessfulRequests: true,
   message: { error: "Too many sign-in attempts from this address. Try again in a few minutes." },
 });
+
+/**
+ * Forgot / reset password. Counts every request (these always answer 200), so a
+ * script can't use the form to probe addresses or flood inboxes.
+ */
+export const passwordResetRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: env.isProduction ? 10 : 200,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many password reset requests from this address. Try again in a few minutes." },
+});

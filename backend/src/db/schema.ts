@@ -77,6 +77,24 @@ export const sessions = pgTable(
   (table) => [index("sessions_user_idx").on(table.userId), index("sessions_expiry_idx").on(table.expiresAt)],
 );
 
+/** Single-use "forgot password" links; only the token's SHA-256 is stored. */
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("password_reset_tokens_user_idx").on(table.userId),
+    index("password_reset_tokens_expiry_idx").on(table.expiresAt),
+  ],
+);
+
 export const auditLogs = pgTable(
   "audit_logs",
   {

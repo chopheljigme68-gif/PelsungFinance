@@ -43,6 +43,13 @@
       "when": 1788600000000,
       "tag": "0005_receipt_and_direct_transaction",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788700000000,
+      "tag": "0006_password_reset_tokens",
+      "breakpoints": true
     }
   ]
 }
