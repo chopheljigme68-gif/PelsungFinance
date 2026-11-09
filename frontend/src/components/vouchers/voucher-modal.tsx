@@ -59,6 +59,7 @@ export function VoucherModal({
   entryMonth,
   bankBalanceNu,
   cashInHandNu,
+  editVoucher,
   onClose,
 }: {
   activities: Activity[];
@@ -69,6 +70,8 @@ export function VoucherModal({
   entryMonth?: string;
   bankBalanceNu: number;
   cashInHandNu: number;
+  /** When set, the form edits this voucher (its creator's own, still Pending or Rejected). */
+  editVoucher?: Voucher | null;
   onClose: () => void;
 }) {
   const { fiscalYear, can, run } = useApp();
@@ -78,26 +81,41 @@ export function VoucherModal({
   const canPrepareVoucher = can("create_voucher");
   const canRecordFundReceipt = can("record_fund_receipt");
 
-  const [budgetLines, setBudgetLines] = useState<BudgetLineDraft[]>(() => [
-    { key: 1, activityId: activities[0]?.id ?? 0, amount: "" },
-  ]);
-  const [voucherType, setVoucherType] = useState(() =>
-    canPrepareVoucher ? (activities.length ? "Payment" : "Advance") : "Receipt",
+  // In edit mode every field starts from the saved voucher.
+  const original = editVoucher ?? null;
+  const isEditing = Boolean(original);
+  const [budgetLines, setBudgetLines] = useState<BudgetLineDraft[]>(() =>
+    original?.budgetLines.length
+      ? original.budgetLines.map((line, index) => ({
+          key: index + 1,
+          activityId: line.activityId,
+          amount: String(line.amountNu),
+        }))
+      : [{ key: 1, activityId: activities[0]?.id ?? 0, amount: "" }],
   );
-  const [payee, setPayee] = useState("");
-  const [tpn, setTpn] = useState("");
-  const [payeeAccountNumber, setPayeeAccountNumber] = useState("");
-  const [payeeBankName, setPayeeBankName] = useState("");
-  const [billReference, setBillReference] = useState("");
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const [gstNu, setGstNu] = useState("0");
-  const [tdsRate, setTdsRate] = useState("0");
-  const [advanceRecoveryVoucherId, setAdvanceRecoveryVoucherId] = useState("");
-  const [advanceRecoveryNu, setAdvanceRecoveryNu] = useState("0");
-  const [receiptCategory, setReceiptCategory] = useState<ReceiptCategory>("Fund receipt");
-  const [ledgerCode, setLedgerCode] = useState(BANK_LEDGER_CODE);
-  const [date, setDate] = useState(() => defaultTransactionDate(fiscalYear, startMonth));
+  const [voucherType, setVoucherType] = useState(() =>
+    original ? original.voucherType : canPrepareVoucher ? (activities.length ? "Payment" : "Advance") : "Receipt",
+  );
+  const [payee, setPayee] = useState(original?.payee ?? "");
+  const [tpn, setTpn] = useState(original?.tpn ?? "");
+  const [payeeAccountNumber, setPayeeAccountNumber] = useState(original?.payeeAccountNumber ?? "");
+  const [payeeBankName, setPayeeBankName] = useState(original?.payeeBankName ?? "");
+  const [billReference, setBillReference] = useState(original?.billReference ?? "");
+  const [description, setDescription] = useState(original?.description ?? "");
+  const [amount, setAmount] = useState(original ? String(original.amountNu) : "");
+  const [gstNu, setGstNu] = useState(original ? String(original.gstNu) : "0");
+  const [tdsRate, setTdsRate] = useState(original ? String(original.tdsRate) : "0");
+  const [advanceRecoveryVoucherId, setAdvanceRecoveryVoucherId] = useState(
+    original?.advanceRecoveryVoucherId ? String(original.advanceRecoveryVoucherId) : "",
+  );
+  const [advanceRecoveryNu, setAdvanceRecoveryNu] = useState(original ? String(original.advanceRecoveryNu) : "0");
+  const [receiptCategory, setReceiptCategory] = useState<ReceiptCategory>(
+    (original?.receiptCategory as ReceiptCategory | null) ?? "Fund receipt",
+  );
+  const [ledgerCode, setLedgerCode] = useState(original?.ledgerCode ?? BANK_LEDGER_CODE);
+  const [date, setDate] = useState(() => original?.transactionDate ?? defaultTransactionDate(fiscalYear, startMonth));
+  // Moving an edited voucher into another month gives it that month's next number.
+  const willRenumber = Boolean(original && original.transactionDate.slice(0, 7) !== date.slice(0, 7));
   const dateInClosedMonth = closedMonths.has(date.slice(0, 7));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -252,39 +270,42 @@ export function VoucherModal({
       return;
     }
 
+    const payload = {
+      fiscalYear,
+      voucherType,
+      payee,
+      tpn: requiresTpn ? normalizedTpn : null,
+      payeeAccountNumber,
+      payeeBankName,
+      billReference,
+      description,
+      amountNu: grossAmountNu,
+      gstNu: isPayment ? gstAmountNu : 0,
+      tdsRate: isPayment ? Number(tdsRate) : 0,
+      advanceRecoveryNu: recoveryAmountNu,
+      advanceRecoveryVoucherId: recoveryAmountNu > 0 ? Number(advanceRecoveryVoucherId) : null,
+      transactionDate: date,
+      budgetLines: hasNoBudgetImpact
+        ? []
+        : allocationDetails.map((line) => ({ activityId: line.activityId, amountNu: line.amountNu })),
+      ledgerCode: choosesLedger ? effectiveLedgerCode : null,
+      receiptCategory: isReceipt ? receiptCategory : null,
+    };
+
     setSaving(true);
     const saved = await run(
-      () =>
-        api.createVoucher({
-          fiscalYear,
-          voucherType,
-          payee,
-          tpn: requiresTpn ? normalizedTpn : null,
-          payeeAccountNumber,
-          payeeBankName,
-          billReference,
-          description,
-          amountNu: grossAmountNu,
-          gstNu: isPayment ? gstAmountNu : 0,
-          tdsRate: isPayment ? Number(tdsRate) : 0,
-          advanceRecoveryNu: recoveryAmountNu,
-          advanceRecoveryVoucherId: recoveryAmountNu > 0 ? Number(advanceRecoveryVoucherId) : null,
-          transactionDate: date,
-          budgetLines: hasNoBudgetImpact
-            ? []
-            : allocationDetails.map((line) => ({ activityId: line.activityId, amountNu: line.amountNu })),
-          ledgerCode: choosesLedger ? effectiveLedgerCode : null,
-          receiptCategory: isReceipt ? receiptCategory : null,
-        }),
-      isRefund
-        ? `Refund submitted for approval. On approval it will increase the ${balanceName} and credit the budget activity back.`
-        : isReceipt
-          ? `Receipt submitted for approval. It will increase the ${balanceName} only after approval and will not affect the budget.`
-          : isDirectTransaction
-            ? "Direct transaction submitted for approval. On approval it will update the budget activity; the bank balance is not affected."
-            : isAdvance
-              ? "Advance submitted for approval. It will affect the bank position only after approval and will not affect the budget."
-              : "Voucher submitted for approval.",
+      () => (original ? api.updateVoucher(original.id, payload) : api.createVoucher(payload)),
+      original
+        ? `Voucher ${original.voucherNumber} updated and sent for approval.`
+        : isRefund
+          ? `Refund submitted for approval. On approval it will increase the ${balanceName} and credit the budget activity back.`
+          : isReceipt
+            ? `Receipt submitted for approval. It will increase the ${balanceName} only after approval and will not affect the budget.`
+            : isDirectTransaction
+              ? "Direct transaction submitted for approval. On approval it will update the budget activity; the bank balance is not affected."
+              : isAdvance
+                ? "Advance submitted for approval. It will affect the bank position only after approval and will not affect the budget."
+                : "Voucher submitted for approval.",
       {
         onError: (apiError: ApiError) => {
           // Budget conflicts carry the live balance; show it beside the message.
@@ -306,8 +327,18 @@ export function VoucherModal({
       <form className="modal-card voucher-entry-card" onSubmit={submit}>
         <header>
           <div>
-            <span className="eyebrow dark">Voucher preparation · {fiscalYearLabel(fiscalYear)}</span>
-            <h2>{isReceipt ? "Record Receipt" : isDirectTransaction ? "Record Direct Transaction" : "Prepare voucher"}</h2>
+            <span className="eyebrow dark">
+              {isEditing ? "Edit voucher" : "Voucher preparation"} · {fiscalYearLabel(fiscalYear)}
+            </span>
+            <h2>
+              {original
+                ? `Edit ${original.voucherNumber}`
+                : isReceipt
+                  ? "Record Receipt"
+                  : isDirectTransaction
+                    ? "Record Direct Transaction"
+                    : "Prepare voucher"}
+            </h2>
             <p>
               {isReceipt
                 ? "Record funds received from others — fund releases, cash receipts and refunds — into the bank or cash in hand."
@@ -336,13 +367,26 @@ export function VoucherModal({
           </div>
           <div>
             <span>Voucher Number</span>
-            <strong>Generated on submit</strong>
+            <strong>
+              {original ? (willRenumber ? "New number on save" : original.voucherNumber) : "Generated on submit"}
+            </strong>
           </div>
           <div>
-            <span>Initial Status</span>
+            <span>{isEditing ? "Status after saving" : "Initial Status"}</span>
             <strong>Pending</strong>
           </div>
         </section>
+
+        {original && (
+          <p className="voucher-edit-note" role="note">
+            {original.status === "Rejected"
+              ? "This voucher was returned. Saving your changes sends it back for approval."
+              : "Saving your changes keeps the voucher pending, and the approver sees the updated version."}
+            {willRenumber
+              ? ` Because the date moves to ${payMonthLabel(date.slice(0, 7))}, it will get a new voucher number in that month.`
+              : ""}
+          </p>
+        )}
 
         <div className="form-grid">
           <div className="form-section-label wide">Voucher control</div>
@@ -350,6 +394,8 @@ export function VoucherModal({
             Voucher type
             <select
               value={voucherType}
+              // The voucher number is built from the type, so an edit cannot change it.
+              disabled={isEditing}
               onChange={(event) => {
                 setVoucherType(event.target.value);
                 // Cash is a receipt-only ledger; fall back to the bank for anything else.
@@ -856,11 +902,15 @@ export function VoucherModal({
           <button className="primary-button" disabled={saving}>
             {saving
               ? "Saving…"
-              : isReceipt
-                ? "Submit receipt for approval"
-                : isDirectTransaction
-                  ? "Submit direct transaction for approval"
-                  : "Submit for approval"}
+              : original
+                ? original.status === "Rejected"
+                  ? "Save and resubmit"
+                  : "Save changes"
+                : isReceipt
+                  ? "Submit receipt for approval"
+                  : isDirectTransaction
+                    ? "Submit direct transaction for approval"
+                    : "Submit for approval"}
           </button>
         </footer>
       </form>

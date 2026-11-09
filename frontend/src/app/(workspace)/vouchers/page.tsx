@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 import { fiscalYearLabel, fiscalYearMonthOptions, money, payMonthLabel } from "@/lib/format";
 import { activeAccountingMonth, closedAccountingMonths } from "@/lib/reconciliation";
 import { workspaceTotals } from "@/lib/totals";
-import { voucherBankEffectNu } from "@/lib/vouchers";
+import { isVoucherEditableBy, voucherBankEffectNu } from "@/lib/vouchers";
 import { useApp } from "@/providers/app-provider";
 import type { AccountingData, Voucher } from "@/types";
 
@@ -34,6 +34,7 @@ function VoucherRegister({ data }: { data: AccountingData }) {
   const closedMonths = useMemo(() => closedAccountingMonths(data.monthClosures), [data.monthClosures]);
   const selectedMonthClosed = closedMonths.has(selectedVoucherMonth);
   const [entryOpen, setEntryOpen] = useState(false);
+  const [editingVoucher, setEditingVoucher] = useState<Voucher | null>(null);
   const [printVoucher, setPrintVoucher] = useState<Voucher | null>(null);
 
   const totals = useMemo(() => workspaceTotals(data), [data]);
@@ -43,6 +44,11 @@ function VoucherRegister({ data }: { data: AccountingData }) {
     .reduce((sum, voucher) => sum + voucherBankEffectNu(voucher), 0);
 
   const canCreate = can("create_voucher") || can("record_fund_receipt");
+  // The server enforces the same rule; this only decides where the Edit button shows.
+  const canEditVoucher = (voucher: Voucher) =>
+    isVoucherEditableBy(voucher, currentUser.id) &&
+    !closedMonths.has(voucher.transactionDate.slice(0, 7)) &&
+    (voucher.voucherType === "Receipt" ? can("record_fund_receipt") : can("create_voucher"));
 
   const submitVoucher = async (voucher: Voucher) => {
     const confirmed = window.confirm(
@@ -133,6 +139,8 @@ function VoucherRegister({ data }: { data: AccountingData }) {
           vouchers={visibleVouchers}
           onPrint={setPrintVoucher}
           onSubmit={submitVoucher}
+          onEdit={setEditingVoucher}
+          isEditable={canEditVoucher}
           currentUserId={currentUser.id}
           emptyMessage={`No vouchers were recorded in ${payMonthLabel(selectedVoucherMonth)}.`}
         />
@@ -148,6 +156,20 @@ function VoucherRegister({ data }: { data: AccountingData }) {
           bankBalanceNu={totals.bankMovement}
           cashInHandNu={totals.cashInHand}
           onClose={() => setEntryOpen(false)}
+        />
+      )}
+
+      {editingVoucher && (
+        <VoucherModal
+          key={editingVoucher.id}
+          editVoucher={editingVoucher}
+          activities={activities}
+          vouchers={vouchers}
+          tpnRegistrations={data.tpnRegistrations}
+          monthClosures={data.monthClosures}
+          bankBalanceNu={totals.bankMovement}
+          cashInHandNu={totals.cashInHand}
+          onClose={() => setEditingVoucher(null)}
         />
       )}
 

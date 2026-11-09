@@ -2,11 +2,13 @@ import { and, eq, inArray, isNull, sql as raw } from "drizzle-orm";
 import { db, type DbExecutor } from "../../db/client.js";
 import { payrollRunItems, payrollRuns, supplierTdsRemittanceRuns, voucherBudgetLines, vouchers } from "../../db/schema.js";
 import {
+  EDITABLE_VOUCHER_STATUSES,
   EMAIL_PATTERN,
   TPN_PATTERN,
   budgetLineSign,
   calculateVoucherDeductions,
   formatVoucherNumber,
+  isVoucherEditableBy,
   receiptCreditsBudget,
   roundNu,
   type ReceiptCategory,
@@ -94,11 +96,7 @@ function assertBudgetLinesFit(
  * DT records the bank ledger it went through but, by definition, does not move
  * the system bank balance.
  */
-export async function createVoucher(
-  user: SessionUser,
-  fiscalYear: string,
-  input: CreateVoucherInput,
-): Promise<{ voucherNumber: string }> {
+async function prepareVoucherPosting(user: SessionUser, input: CreateVoucherInput) {
   const isReceipt = input.voucherType === "Receipt";
   const isPayment = input.voucherType === "Payment";
   const isDirectTransaction = input.voucherType === "DT";
@@ -172,36 +170,101 @@ export async function createVoucher(
     throw badRequest(`TPN ${tpn} is not registered. Register it under Accounts → TPN Registration first.`);
   }
 
+  return {
+    receiptCategory,
+    isRefund,
+    hasNoBudgetImpact,
+    ledger,
+    budgetLines,
+    amountNu,
+    gstNu,
+    tdsRate,
+    tdsNu,
+    advanceRecoveryNu,
+    advanceRecoveryVoucherId,
+    netPaymentNu,
+    tpn: requiresTpn ? tpn : null,
+  };
+}
+
+type PreparedVoucher = Awaited<ReturnType<typeof prepareVoucherPosting>>;
+
+/**
+ * Balance checks that must run inside the posting transaction, with the
+ * activity rows locked, because balances can move between requests. Only
+ * Approved/Paid vouchers count toward balances, so a Pending voucher being
+ * edited never double-counts its own previous lines.
+ */
+async function verifyVoucherBalances(tx: DbExecutor, fiscalYear: string, prepared: PreparedVoucher): Promise<void> {
+  const { advanceRecoveryNu, advanceRecoveryVoucherId, hasNoBudgetImpact, budgetLines, isRefund } = prepared;
+  if (advanceRecoveryNu > 0 && advanceRecoveryVoucherId) {
+    const advance = await loadOutstandingAdvance(tx, advanceRecoveryVoucherId, fiscalYear);
+    if (!advance) throw conflict("The selected advance is no longer available for recovery.");
+    if (advanceRecoveryNu > advance.outstandingNu) {
+      throw conflict("Advance recovery cannot be greater than the outstanding advance balance.", {
+        outstandingAdvanceNu: advance.outstandingNu,
+      });
+    }
+  }
+
+  if (!hasNoBudgetImpact) {
+    const balances = await loadActivityBalances(
+      tx,
+      fiscalYear,
+      budgetLines.map((line) => line.activityId),
+      true,
+    );
+    assertBudgetLinesFit(
+      budgetLines,
+      balances,
+      isRefund ? "refund" : "spend",
+      isRefund ? "cannot take this refund" : "cannot accept this allocation",
+    );
+  }
+}
+
+/** The voucher columns a user enters, shared by create and edit. */
+function voucherFields(input: CreateVoucherInput, prepared: PreparedVoucher) {
+  return {
+    activityId: prepared.hasNoBudgetImpact ? null : prepared.budgetLines[0]?.activityId ?? null,
+    payee: input.payee,
+    tpn: prepared.tpn,
+    payeeAccountNumber: input.payeeAccountNumber?.trim() || null,
+    payeeBankName: input.payeeBankName?.trim() || null,
+    billReference: input.billReference?.trim() || null,
+    description: input.description,
+    amountNu: prepared.amountNu,
+    gstNu: prepared.gstNu,
+    tdsRate: prepared.tdsRate,
+    tdsNu: prepared.tdsNu,
+    advanceRecoveryNu: prepared.advanceRecoveryNu,
+    advanceRecoveryVoucherId: prepared.advanceRecoveryVoucherId,
+    netPaymentNu: prepared.netPaymentNu,
+    ledgerCode: prepared.ledger.code,
+    receiptCategory: prepared.receiptCategory,
+    transactionDate: input.transactionDate,
+  };
+}
+
+function describeVoucher(input: CreateVoucherInput, prepared: PreparedVoucher): string {
+  const { receiptCategory, ledger, budgetLines, isRefund, amountNu, tdsNu, advanceRecoveryNu, netPaymentNu } = prepared;
+  return `${input.voucherType}${receiptCategory ? ` (${receiptCategory})` : ""} voucher via ${ledger.code} ${ledger.name}: ${budgetLines.length} budget ${isRefund ? "refund line(s)" : "allocation(s)"}, gross Nu. ${amountNu}, TDS Nu. ${tdsNu}, advance recovery Nu. ${advanceRecoveryNu}, net Nu. ${netPaymentNu}`;
+}
+
+export async function createVoucher(
+  user: SessionUser,
+  fiscalYear: string,
+  input: CreateVoucherInput,
+): Promise<{ voucherNumber: string }> {
+  const prepared = await prepareVoucherPosting(user, input);
+
   // A closed accounting month is locked to new postings.
   if (await isAccountingMonthClosed(fiscalYear, input.transactionDate.slice(0, 7))) {
     throw conflict("A voucher cannot be created for a closed accounting month.");
   }
 
   const voucherNumber = await db.transaction(async (tx) => {
-    if (advanceRecoveryNu > 0 && advanceRecoveryVoucherId) {
-      const advance = await loadOutstandingAdvance(tx, advanceRecoveryVoucherId, fiscalYear);
-      if (!advance) throw conflict("The selected advance is no longer available for recovery.");
-      if (advanceRecoveryNu > advance.outstandingNu) {
-        throw conflict("Advance recovery cannot be greater than the outstanding advance balance.", {
-          outstandingAdvanceNu: advance.outstandingNu,
-        });
-      }
-    }
-
-    if (!hasNoBudgetImpact) {
-      const balances = await loadActivityBalances(
-        tx,
-        fiscalYear,
-        budgetLines.map((line) => line.activityId),
-        true,
-      );
-      assertBudgetLinesFit(
-        budgetLines,
-        balances,
-        isRefund ? "refund" : "spend",
-        isRefund ? "cannot take this refund" : "cannot accept this allocation",
-      );
-    }
+    await verifyVoucherBalances(tx, fiscalYear, prepared);
 
     const monthKey = input.transactionDate.slice(5, 7);
     const serial = await nextVoucherSerial(tx, fiscalYear, input.voucherType, monthKey);
@@ -210,50 +273,145 @@ export async function createVoucher(
     const [voucher] = await tx
       .insert(vouchers)
       .values({
+        ...voucherFields(input, prepared),
         voucherNumber: number,
-        activityId: hasNoBudgetImpact ? null : budgetLines[0]?.activityId ?? null,
         fiscalYear,
         voucherType: input.voucherType,
-        payee: input.payee,
-        tpn: requiresTpn ? tpn : null,
-        payeeAccountNumber: input.payeeAccountNumber?.trim() || null,
-        payeeBankName: input.payeeBankName?.trim() || null,
-        billReference: input.billReference?.trim() || null,
-        description: input.description,
-        amountNu,
-        gstNu,
-        tdsRate,
-        tdsNu,
-        advanceRecoveryNu,
-        advanceRecoveryVoucherId,
-        netPaymentNu,
-        ledgerCode: ledger.code,
-        receiptCategory,
         status: "Pending",
-        transactionDate: input.transactionDate,
         createdBy: user.id,
       })
       .returning({ id: vouchers.id, voucherNumber: vouchers.voucherNumber });
 
-    if (budgetLines.length) {
+    if (prepared.budgetLines.length) {
       await tx.insert(voucherBudgetLines).values(
-        budgetLines.map((line) => ({ voucherId: voucher.id, activityId: line.activityId, amountNu: line.amountNu })),
+        prepared.budgetLines.map((line) => ({ voucherId: voucher.id, activityId: line.activityId, amountNu: line.amountNu })),
       );
     }
 
-    await audit(
-      user.id,
-      "voucher_created",
-      "voucher",
-      voucher.voucherNumber,
-      `${input.voucherType}${receiptCategory ? ` (${receiptCategory})` : ""} voucher via ${ledger.code} ${ledger.name}: ${budgetLines.length} budget ${isRefund ? "refund line(s)" : "allocation(s)"}, gross Nu. ${amountNu}, TDS Nu. ${tdsNu}, advance recovery Nu. ${advanceRecoveryNu}, net Nu. ${netPaymentNu}`,
-      tx,
-    );
+    await audit(user.id, "voucher_created", "voucher", voucher.voucherNumber, describeVoucher(input, prepared), tx);
 
     return voucher.voucherNumber;
   });
 
   return { voucherNumber };
+}
+
+/**
+ * Lets the user who prepared a voucher correct it before it is approved.
+ *
+ * - Only the creator can edit, and only while the voucher is Pending or
+ *   Rejected. Approved and Paid vouchers are posted and are corrected by
+ *   reversal instead; Reversed vouchers are final.
+ * - Payroll and remittance vouchers are generated from their runs and are
+ *   changed by regenerating the run, never by hand.
+ * - The voucher type is fixed, because the voucher number is built from it.
+ *   Moving the date to another month gives the voucher the next number in that
+ *   month; otherwise the number is kept.
+ * - An edited voucher always goes back to Pending, so a Rejected voucher is
+ *   resubmitted for approval by saving it, and every edit is re-approved.
+ * - The same validation, permission, closed-month and balance rules as
+ *   creation apply, all inside one transaction with the voucher row locked so
+ *   an approver cannot approve it half-way through an edit.
+ */
+export async function updateVoucher(
+  user: SessionUser,
+  fiscalYear: string,
+  voucherId: number,
+  input: CreateVoucherInput,
+): Promise<{ voucherNumber: string }> {
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select({
+        id: vouchers.id,
+        voucherNumber: vouchers.voucherNumber,
+        voucherType: vouchers.voucherType,
+        status: vouchers.status,
+        createdBy: vouchers.createdBy,
+        transactionDate: vouchers.transactionDate,
+        payrollRunId: vouchers.payrollRunId,
+        payrollRemittanceRunId: vouchers.payrollRemittanceRunId,
+        supplierTdsRemittanceRunId: vouchers.supplierTdsRemittanceRunId,
+        payrollEntryType: vouchers.payrollEntryType,
+      })
+      .from(vouchers)
+      .where(and(eq(vouchers.id, voucherId), eq(vouchers.fiscalYear, fiscalYear)))
+      .for("update")
+      .limit(1);
+
+    if (!existing) throw conflict("This voucher was not found in the selected financial year.");
+    if (existing.createdBy !== user.id) throw forbidden("You can only edit vouchers that you created.");
+    if (!isVoucherEditableBy(existing, user.id)) {
+      if (existing.payrollEntryType || existing.payrollRunId || existing.payrollRemittanceRunId || existing.supplierTdsRemittanceRunId) {
+        throw conflict("Payroll and remittance vouchers are generated automatically and cannot be edited by hand.");
+      }
+      throw conflict(
+        `Voucher ${existing.voucherNumber} is ${existing.status} and can no longer be edited.` +
+          (existing.status === "Approved" || existing.status === "Paid" ? " Ask an approver to reverse it instead." : ""),
+      );
+    }
+    if (input.voucherType !== existing.voucherType) {
+      throw badRequest("The voucher type cannot be changed. Create a new voucher of the other type instead.");
+    }
+
+    const prepared = await prepareVoucherPosting(user, input);
+
+    const oldMonth = existing.transactionDate.slice(0, 7);
+    const newMonth = input.transactionDate.slice(0, 7);
+    if (await isAccountingMonthClosed(fiscalYear, oldMonth)) {
+      throw conflict("This voucher belongs to a closed accounting month and can no longer be edited.");
+    }
+    if (newMonth !== oldMonth && (await isAccountingMonthClosed(fiscalYear, newMonth))) {
+      throw conflict("A voucher cannot be moved into a closed accounting month.");
+    }
+
+    await verifyVoucherBalances(tx, fiscalYear, prepared);
+
+    let voucherNumber = existing.voucherNumber;
+    if (newMonth !== oldMonth) {
+      const monthKey = input.transactionDate.slice(5, 7);
+      const serial = await nextVoucherSerial(tx, fiscalYear, input.voucherType, monthKey);
+      voucherNumber = formatVoucherNumber(input.voucherType, Number(monthKey), serial);
+    }
+
+    const updated = await tx
+      .update(vouchers)
+      .set({
+        ...voucherFields(input, prepared),
+        voucherNumber,
+        status: "Pending",
+        approvedBy: null,
+        approvedAt: null,
+      })
+      .where(
+        and(
+          eq(vouchers.id, voucherId),
+          eq(vouchers.createdBy, user.id),
+          inArray(vouchers.status, [...EDITABLE_VOUCHER_STATUSES]),
+        ),
+      )
+      .returning({ id: vouchers.id });
+    if (!updated.length) throw conflict("This voucher changed while you were editing it. Reload and try again.");
+
+    await tx.delete(voucherBudgetLines).where(eq(voucherBudgetLines.voucherId, voucherId));
+    if (prepared.budgetLines.length) {
+      await tx.insert(voucherBudgetLines).values(
+        prepared.budgetLines.map((line) => ({ voucherId, activityId: line.activityId, amountNu: line.amountNu })),
+      );
+    }
+
+    const renumbered = voucherNumber !== existing.voucherNumber ? ` (renumbered from ${existing.voucherNumber})` : "";
+    const resubmitted = existing.status === "Rejected" ? " and resubmitted for approval" : "";
+    await audit(
+      user.id,
+      "voucher_edited",
+      "voucher",
+      voucherNumber,
+      `Edited${resubmitted}${renumbered}. Now: ${describeVoucher(input, prepared)}`,
+      tx,
+    );
+
+    return { voucherNumber };
+  });
 }
 
 /** Draft vouchers generated by payroll/remittance are submitted by their author. */

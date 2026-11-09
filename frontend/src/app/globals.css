@@ -246,6 +246,8 @@ td select:disabled { color: var(--muted); background: #F9FBFF; }
 .payslip-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 17px 30px 22px; border-top: 1px solid var(--line); }
 .voucher-print-button { padding: 7px 10px; border: 1px solid #A8B3C5; border-radius: 5px; color: var(--navy); background: #F9FBFF; font-size: 10px; font-weight: 800; white-space: nowrap; }.voucher-print-button:hover { border-color: var(--teal); color: var(--teal); background: var(--teal-soft); }
 .voucher-action-stack { display: flex; align-items: flex-start; gap: 7px; flex-direction: column; }.voucher-submit-button { padding: 8px 11px; border: 0; border-radius: 5px; color: #FFFFFF; background: var(--teal); font-size: 12px; font-weight: 800; white-space: nowrap; }.voucher-submit-button:hover { background: #0F172A; }
+.voucher-edit-button { padding: 8px 11px; border: 1px solid var(--teal); border-radius: 5px; color: var(--teal); background: #FFFFFF; font-size: 12px; font-weight: 800; white-space: nowrap; }.voucher-edit-button:hover { color: #FFFFFF; background: var(--teal); }
+.voucher-edit-note { margin: 16px 26px 0; padding: 10px 12px; border-left: 3px solid var(--teal); border-radius: 4px; color: #0F172A; background: #F0FAF9; font-size: 13px; line-height: 1.5; }
 .voucher-account-lines { display: grid; gap: 5px; min-width: 220px; }.voucher-account-lines > div { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding-bottom: 5px; border-bottom: 1px solid #EEF2F9; }.voucher-account-lines > div:last-child { padding-bottom: 0; border-bottom: 0; }.voucher-account-lines span { line-height: 1.45; }.voucher-account-lines strong { flex: 0 0 auto; color: var(--navy); font-size: 11px; white-space: nowrap; }
 .voucher-print-backdrop { padding: 16px; }
 .voucher-print-card { page: voucher; width: min(980px, 100%); max-height: calc(100vh - 32px); overflow: auto; border-radius: 8px; color: #0F172A; background: #FFFFFF; box-shadow: 0 28px 80px rgba(15,23,42,.36); }
@@ -527,7 +529,7 @@ button:disabled, .primary-button:disabled, .secondary-button:disabled {
    "Posting"), which left a row of buttons at uneven heights and reads as a
    rendering fault. Keep each label on one line and let the row wrap instead. */
 .primary-button, .secondary-button, .approve-button, .reject-button,
-.reversal-button, .voucher-print-button, .voucher-submit-button,
+.reversal-button, .voucher-print-button, .voucher-submit-button, .voucher-edit-button,
 .payroll-undo-button, .password-action, .logout-action { white-space: nowrap; }
 
 .module-hero-actions, .register-toolbar, .voucher-register-actions,

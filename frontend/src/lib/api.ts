@@ -120,6 +120,9 @@ export const api = {
 
   /* Vouchers --------------------------------------------------------------- */
   createVoucher: (body: Record<string, unknown>) => request<AccountingData>("/api/vouchers", { method: "POST", body }),
+  /** The creator edits their own Pending or Rejected voucher; it goes back to Pending. */
+  updateVoucher: (voucherId: number, body: Record<string, unknown>) =>
+    request<AccountingData>(`/api/vouchers/${voucherId}`, { method: "PUT", body }),
   submitVoucher: (voucherId: number, fiscalYear: string) =>
     request<AccountingData>(`/api/vouchers/${voucherId}/submit`, { method: "POST", body: { fiscalYear } }),
   decideVoucher: (voucherId: number, status: "Approved" | "Rejected", fiscalYear: string) =>

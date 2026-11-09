@@ -56,6 +56,39 @@ export type PayrollEntryType = (typeof PAYROLL_ENTRY_TYPES)[number];
 /** Statuses that commit budget and move the bank position. */
 export const POSTED_STATUSES: VoucherStatus[] = ["Approved", "Paid"];
 
+/**
+ * Statuses in which the user who prepared a voucher may still edit it. Once
+ * approved, a voucher is posted and is corrected only by reversal.
+ */
+export const EDITABLE_VOUCHER_STATUSES = ["Pending", "Rejected"] as const satisfies readonly VoucherStatus[];
+
+/**
+ * Whether `userId` may edit this voucher: only its creator, only before
+ * approval, and never a payroll or remittance voucher (those are regenerated
+ * from their runs).
+ */
+export function isVoucherEditableBy(
+  voucher: {
+    status: string;
+    createdBy?: number | null;
+    payrollRunId?: number | null;
+    payrollRemittanceRunId?: number | null;
+    supplierTdsRemittanceRunId?: number | null;
+    payrollEntryType?: string | null;
+  },
+  userId: number | null | undefined,
+): boolean {
+  return (
+    userId != null &&
+    voucher.createdBy === userId &&
+    (EDITABLE_VOUCHER_STATUSES as readonly string[]).includes(voucher.status) &&
+    !voucher.payrollRunId &&
+    !voucher.payrollRemittanceRunId &&
+    !voucher.supplierTdsRemittanceRunId &&
+    !voucher.payrollEntryType
+  );
+}
+
 export function isPostedStatus(status: string): boolean {
   return POSTED_STATUSES.includes(status as VoucherStatus);
 }

@@ -13,6 +13,7 @@ import {
   deliverPayslipsForPayrollVoucher,
   reverseVoucher,
   submitVoucher,
+  updateVoucher,
 } from "./voucher.service.js";
 
 const idParams = z.object({ id: z.coerce.number().int().positive("Select a valid voucher.") });
@@ -80,6 +81,19 @@ voucherRouter.post(
   asyncHandler(async (req, res) => {
     await createVoucher(currentUser(req), requestedFiscalYear(req), req.body);
     await respondWithSnapshot(req, res, {}, 201);
+  }),
+);
+
+// The preparer corrects their own voucher before approval. Ownership, status
+// and the receipt-vs-voucher permission are checked in updateVoucher().
+voucherRouter.put(
+  "/:id",
+  requireAnyPermission("create_voucher", "record_fund_receipt"),
+  validateParams(idParams),
+  validateBody(createVoucherSchema),
+  asyncHandler(async (req, res) => {
+    const { voucherNumber } = await updateVoucher(currentUser(req), requestedFiscalYear(req), Number(req.params.id), req.body);
+    await respondWithSnapshot(req, res, { actionNotice: `Voucher ${voucherNumber} updated and sent for approval.` });
   }),
 );
 

@@ -178,16 +178,21 @@ export function VoucherTable({
   vouchers,
   onPrint,
   onSubmit,
+  onEdit,
+  isEditable,
   currentUserId,
   emptyMessage = "No vouchers found.",
 }: {
   vouchers: Voucher[];
   onPrint?: (voucher: Voucher) => void;
   onSubmit?: (voucher: Voucher) => void;
+  /** Opens the edit form; shown only on rows `isEditable` accepts. */
+  onEdit?: (voucher: Voucher) => void;
+  isEditable?: (voucher: Voucher) => boolean;
   currentUserId?: number;
   emptyMessage?: string;
 }) {
-  const hasActions = Boolean(onPrint || onSubmit);
+  const hasActions = Boolean(onPrint || onSubmit || onEdit);
 
   return (
     <div className="table-scroll">
@@ -209,6 +214,7 @@ export function VoucherTable({
             const canSubmit = Boolean(
               onSubmit && voucher.status === "Draft" && voucher.payrollEntryType && voucher.createdBy === currentUserId,
             );
+            const canEdit = Boolean(onEdit && isEditable?.(voucher));
             return (
               <tr key={voucher.id}>
                 <td>
@@ -251,6 +257,16 @@ export function VoucherTable({
                       {onPrint && (
                         <button type="button" className="voucher-print-button" onClick={() => onPrint(voucher)}>
                           View / Print
+                        </button>
+                      )}
+                      {canEdit && (
+                        <button
+                          type="button"
+                          className="voucher-edit-button"
+                          onClick={() => onEdit?.(voucher)}
+                          aria-label={`Edit voucher ${voucher.voucherNumber}`}
+                        >
+                          {voucher.status === "Rejected" ? "Edit & resubmit" : "Edit"}
                         </button>
                       )}
                       {canSubmit && (
