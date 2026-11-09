@@ -21,6 +21,7 @@ export const BANKS = [
   "Bhutan National Bank",
   "Punjab National Bank",
   "Digital Kidu",
+  "T Bank",
 ] as const;
 
 export type Bank = (typeof BANKS)[number];
