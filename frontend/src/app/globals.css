@@ -51,6 +51,9 @@ button { cursor: pointer; }
 .login-button span { font-size: 21px; font-weight: 400; }
 .form-error { margin: -6px 0 14px; padding: 10px 12px; border-radius: 6px; color: #9B2C3E; background: #EEF2F9; font-size: 13.5px; }
 .voucher-entry-card label > small.field-warning, .field-warning { float: none; color: #9B2C3E; font-size: 12px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.tpn-success { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tpn-success button { border: 0; background: none; color: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
+tr.row-highlight td { background: #ECFDF3; transition: background .6s; }
 .form-success { margin: 0 0 18px; padding: 12px 14px; border-radius: 6px; color: #14532D; background: #ECFDF3; font-size: 13.5px; line-height: 1.55; }
 .login-link { color: var(--teal); font-size: 13.5px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .forgot-link { display: block; width: fit-content; margin: -8px 0 18px auto; }

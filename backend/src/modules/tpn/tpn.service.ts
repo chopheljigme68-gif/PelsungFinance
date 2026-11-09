@@ -24,7 +24,7 @@ export async function registerTpn(
       .values({ tpn, name, createdBy: actor.id })
       .returning({ id: tpnRegistrations.id });
     await audit(actor.id, "tpn_registered", "tpn_registration", created.id, `${tpn} · ${name}`);
-    return { actionNotice: `TPN ${tpn} (${name}) was registered.` };
+    return { actionNotice: `TPN ${tpn} (${name}) successfully added.` };
   } catch (error) {
     if (isPostgresError(error, PG_UNIQUE_VIOLATION)) throw conflict(`TPN ${tpn} is already registered.`);
     throw error;

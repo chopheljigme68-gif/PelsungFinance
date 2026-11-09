@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Empty, ModalShell, ModuleHero } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import { timestamp } from "@/lib/format";
@@ -11,6 +11,14 @@ export function TpnRegistrationModule({ data }: { data: AccountingData }) {
   const { can } = useApp();
   const canManage = can("manage_tpn");
   const [adding, setAdding] = useState(false);
+  const [added, setAdded] = useState<{ tpn: string; name: string } | null>(null);
+
+  // The confirmation stays long enough to read, then clears itself.
+  useEffect(() => {
+    if (!added) return;
+    const timer = window.setTimeout(() => setAdded(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [added]);
 
   const registrations = [...data.tpnRegistrations].sort((a, b) => a.name.localeCompare(b.name));
 
@@ -28,6 +36,17 @@ export function TpnRegistrationModule({ data }: { data: AccountingData }) {
           )
         }
       />
+
+      {added && (
+        <div className="form-success tpn-success" role="status">
+          <span>
+            ✓ TPN <strong>{added.tpn}</strong> ({added.name}) successfully added. It can now be selected on TDS vouchers.
+          </span>
+          <button type="button" aria-label="Dismiss" onClick={() => setAdded(null)}>
+            ×
+          </button>
+        </div>
+      )}
 
       <section className="register-summary">
         <div>
@@ -56,7 +75,7 @@ export function TpnRegistrationModule({ data }: { data: AccountingData }) {
             </thead>
             <tbody>
               {registrations.map((registration) => (
-                <tr key={registration.id}>
+                <tr key={registration.id} className={registration.tpn === added?.tpn ? "row-highlight" : undefined}>
                   <td>
                     <span className="obc-code">{registration.tpn}</span>
                   </td>
@@ -80,7 +99,16 @@ export function TpnRegistrationModule({ data }: { data: AccountingData }) {
         </div>
       </section>
 
-      {adding && <TpnRegistrationModal onClose={() => setAdding(false)} />}
+      {adding && (
+        <TpnRegistrationModal
+          onClose={() => setAdding(false)}
+          onAdded={(registration) => {
+            setAdding(false);
+            setAdded(registration);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        />
+      )}
     </>
   );
 }
@@ -101,10 +129,17 @@ function RemoveButton({ id, tpn }: { id: number; tpn: string }) {
   );
 }
 
-function TpnRegistrationModal({ onClose }: { onClose: () => void }) {
-  const { run } = useApp();
+function TpnRegistrationModal({
+  onClose,
+  onAdded,
+}: {
+  onClose: () => void;
+  onAdded: (registration: { tpn: string; name: string }) => void;
+}) {
+  const { run, setNotice } = useApp();
   const [tpn, setTpn] = useState("");
   const [name, setName] = useState("");
+  const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   const normalizedTpn = tpn.trim().toLocaleUpperCase();
@@ -114,12 +149,23 @@ function TpnRegistrationModal({ onClose }: { onClose: () => void }) {
     event.preventDefault();
     if (!valid) return;
     setSaving(true);
+    setError("");
+    let failure = "";
     const saved = await run(
       () => api.addTpnRegistration({ tpn: normalizedTpn, name: name.trim() }),
-      `TPN ${normalizedTpn} (${name.trim()}) was registered.`,
+      `TPN ${normalizedTpn} successfully added.`,
+      {
+        onError: (apiError) => {
+          failure = apiError.message;
+        },
+      },
     );
     setSaving(false);
-    if (saved) onClose();
+    // The page shows its own confirmation (or the form shows the error), so the
+    // generic banner at the top of the workspace isn't needed as well.
+    setNotice("");
+    if (saved) onAdded({ tpn: normalizedTpn, name: name.trim() });
+    else setError(failure || "The TPN could not be registered. Try again.");
   };
 
   return (
@@ -141,9 +187,10 @@ function TpnRegistrationModal({ onClose }: { onClose: () => void }) {
             <input
               maxLength={30}
               value={tpn}
-              onChange={(event) =>
-                setTpn(event.target.value.toLocaleUpperCase().replace(/[^A-Z0-9./-]/g, "").slice(0, 30))
-              }
+              onChange={(event) => {
+                setTpn(event.target.value.toLocaleUpperCase().replace(/[^A-Z0-9./-]/g, "").slice(0, 30));
+                setError("");
+              }}
               placeholder="e.g. PT-1234567"
               required
             />
@@ -153,12 +200,20 @@ function TpnRegistrationModal({ onClose }: { onClose: () => void }) {
             <input
               maxLength={160}
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => {
+                setName(event.target.value);
+                setError("");
+              }}
               placeholder="Taxpayer / supplier name"
               required
             />
           </label>
         </div>
+        {error && (
+          <div className="form-error" role="alert">
+            {error}
+          </div>
+        )}
         <footer>
           <button type="button" className="secondary-button" onClick={onClose}>
             Cancel
