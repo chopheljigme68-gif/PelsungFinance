@@ -74,7 +74,7 @@ function UserManagement({ data }: { data: AccountingData }) {
     );
     if (!confirmed) return;
     await run(
-      () => api.deleteUser(managedUser.id),
+      () => api.deleteUser(managedUser.id, fiscalYear),
       `${managedUser.displayName} was deleted. Access was revoked and accounting history was preserved.`,
     );
   };

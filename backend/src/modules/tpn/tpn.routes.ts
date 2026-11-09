@@ -8,6 +8,8 @@ import { deleteTpnRegistration, registerTpn } from "./tpn.service.js";
 export const tpnRouter = Router();
 
 const registerSchema = z.object({
+  // Echoed back so the refreshed snapshot is for the year the user is viewing.
+  fiscalYear: z.string().optional(),
   tpn: z.string().trim().min(3, "Enter a valid TPN.").max(30),
   name: z.string().trim().min(1, "Enter the taxpayer's name.").max(160),
 });

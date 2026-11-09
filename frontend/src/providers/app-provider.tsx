@@ -97,7 +97,11 @@ function AppState({ children }: { children: ReactNode }) {
 
   const applySnapshot = useCallback(
     (snapshot: AccountingData) => {
-      queryClient.setQueryData(["accounting", snapshot.fiscalYear ?? fiscalYear], snapshot);
+      const snapshotYear = snapshot.fiscalYear ?? fiscalYear;
+      queryClient.setQueryData(["accounting", snapshotYear], snapshot);
+      // Safety net: if a mutation answered for a different year than the one on
+      // screen, refetch the visible year so the page never shows stale data.
+      if (snapshotYear !== fiscalYear) void queryClient.invalidateQueries({ queryKey: ["accounting", fiscalYear] });
       setUser(snapshot.currentUser);
     },
     [fiscalYear, queryClient],

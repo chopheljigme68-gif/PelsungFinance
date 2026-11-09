@@ -170,10 +170,10 @@ export const api = {
     request<AccountingData>("/api/reconciliation/month-close", { method: "POST", body }),
 
   /* TPN registry ----------------------------------------------------------- */
-  addTpnRegistration: (body: { tpn: string; name: string }) =>
+  addTpnRegistration: (body: { tpn: string; name: string; fiscalYear: string }) =>
     request<AccountingData>("/api/tpn", { method: "POST", body }),
-  deleteTpnRegistration: (tpnId: number) =>
-    request<AccountingData>(`/api/tpn/${tpnId}`, { method: "DELETE" }),
+  deleteTpnRegistration: (tpnId: number, fiscalYear: string) =>
+    request<AccountingData>(`/api/tpn/${tpnId}?fiscalYear=${encodeURIComponent(fiscalYear)}`, { method: "DELETE" }),
 
   /* Users ------------------------------------------------------------------ */
   createUser: (body: Record<string, unknown>) => request<AccountingData>("/api/users", { method: "POST", body }),
@@ -183,7 +183,8 @@ export const api = {
     request<AccountingData>(`/api/users/${userId}/role`, { method: "PATCH", body: { role, fiscalYear } }),
   resendInvitation: (userId: number, fiscalYear: string) =>
     request<AccountingData>(`/api/users/${userId}/invitation`, { method: "POST", body: { fiscalYear } }),
-  deleteUser: (userId: number) => request<AccountingData>(`/api/users/${userId}`, { method: "DELETE" }),
+  deleteUser: (userId: number, fiscalYear: string) =>
+    request<AccountingData>(`/api/users/${userId}?fiscalYear=${encodeURIComponent(fiscalYear)}`, { method: "DELETE" }),
 };
 
 export { API_URL };

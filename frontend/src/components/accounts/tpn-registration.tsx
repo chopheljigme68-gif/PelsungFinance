@@ -114,12 +114,12 @@ export function TpnRegistrationModule({ data }: { data: AccountingData }) {
 }
 
 function RemoveButton({ id, tpn }: { id: number; tpn: string }) {
-  const { run } = useApp();
+  const { fiscalYear, run } = useApp();
   const [busy, setBusy] = useState(false);
   const remove = async () => {
     if (!window.confirm(`Remove TPN ${tpn} from the registry? Existing vouchers keep their recorded TPN.`)) return;
     setBusy(true);
-    await run(() => api.deleteTpnRegistration(id), `TPN ${tpn} was removed.`);
+    await run(() => api.deleteTpnRegistration(id, fiscalYear), `TPN ${tpn} was removed.`);
     setBusy(false);
   };
   return (
@@ -136,7 +136,7 @@ function TpnRegistrationModal({
   onClose: () => void;
   onAdded: (registration: { tpn: string; name: string }) => void;
 }) {
-  const { run, setNotice } = useApp();
+  const { fiscalYear, run, setNotice } = useApp();
   const [tpn, setTpn] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -152,7 +152,7 @@ function TpnRegistrationModal({
     setError("");
     let failure = "";
     const saved = await run(
-      () => api.addTpnRegistration({ tpn: normalizedTpn, name: name.trim() }),
+      () => api.addTpnRegistration({ fiscalYear, tpn: normalizedTpn, name: name.trim() }),
       `TPN ${normalizedTpn} successfully added.`,
       {
         onError: (apiError) => {
