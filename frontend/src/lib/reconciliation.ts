@@ -40,6 +40,14 @@ export function activeAccountingMonth(
   return fyMonths[index];
 }
 
+/**
+ * Months closed to new vouchers. Mirrors the backend's `isAccountingMonthClosed`,
+ * which locks a month for every voucher once it is closed.
+ */
+export function closedAccountingMonths(monthClosures: MonthClosure[]): Set<string> {
+  return new Set(monthClosures.filter((closure) => closure.status === "Closed").map((closure) => closure.closeMonth));
+}
+
 export type CashBookPosition = {
   totalFundsReceivedNu: number;
   closingCashBookBalanceNu: number;

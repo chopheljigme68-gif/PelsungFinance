@@ -7,7 +7,7 @@ import { VoucherPrintModal } from "@/components/vouchers/voucher-print-modal";
 import { VoucherTable, voucherDisplayType } from "@/components/vouchers/voucher-parts";
 import { api } from "@/lib/api";
 import { fiscalYearLabel, fiscalYearMonthOptions, money, payMonthLabel } from "@/lib/format";
-import { activeAccountingMonth } from "@/lib/reconciliation";
+import { activeAccountingMonth, closedAccountingMonths } from "@/lib/reconciliation";
 import { workspaceTotals } from "@/lib/totals";
 import { voucherBankEffectNu } from "@/lib/vouchers";
 import { useApp } from "@/providers/app-provider";
@@ -29,6 +29,10 @@ function VoucherRegister({ data }: { data: AccountingData }) {
     [fiscalYear, data.monthClosures],
   );
   const [selectedVoucherMonth, setSelectedVoucherMonth] = useState(() => activeMonth);
+  // Vouchers can be entered in any month of the fiscal year that has not been
+  // closed; a closed month stays open for review only.
+  const closedMonths = useMemo(() => closedAccountingMonths(data.monthClosures), [data.monthClosures]);
+  const selectedMonthClosed = closedMonths.has(selectedVoucherMonth);
   const [entryOpen, setEntryOpen] = useState(false);
   const [printVoucher, setPrintVoucher] = useState<Voucher | null>(null);
 
@@ -84,21 +88,26 @@ function VoucherRegister({ data }: { data: AccountingData }) {
         <div>
           <span className="eyebrow dark">Voucher period</span>
           <h3>Select voucher month</h3>
-          <p>The register opens on the current open accounting month. Closed months remain available for review.</p>
+          <p>
+            The register opens on the current accounting month. Vouchers can be added in any month that has not been
+            closed; closed months are available for review only.
+          </p>
         </div>
         <label>
           Month
           <select value={selectedVoucherMonth} onChange={(event) => setSelectedVoucherMonth(event.target.value)}>
             {voucherPeriods.map((period) => (
-              <option key={period.value} value={period.value} disabled={period.value > activeMonth}>
+              <option key={period.value} value={period.value}>
                 {period.label}
                 {period.value === activeMonth ? " · Current period" : ""}
+                {closedMonths.has(period.value) ? " · Closed" : ""}
               </option>
             ))}
           </select>
           <small>
-            Bank reconciliation and month closing are required before voucher processing can move beyond the current open
-            month.
+            {selectedMonthClosed
+              ? `${payMonthLabel(selectedVoucherMonth)} is closed. New vouchers can't be added to a closed month.`
+              : "Pick any open month to view its vouchers or add new ones."}
           </small>
         </label>
       </section>
@@ -113,7 +122,7 @@ function VoucherRegister({ data }: { data: AccountingData }) {
             <span className="fy-chip">
               {visibleVouchers.length} VOUCHER{visibleVouchers.length === 1 ? "" : "S"}
             </span>
-            {canCreate && selectedVoucherMonth === activeMonth && (
+            {canCreate && !selectedMonthClosed && (
               <button className="primary-button" onClick={() => setEntryOpen(true)}>
                 ＋ Create voucher
               </button>
@@ -135,6 +144,7 @@ function VoucherRegister({ data }: { data: AccountingData }) {
           vouchers={vouchers}
           tpnRegistrations={data.tpnRegistrations}
           monthClosures={data.monthClosures}
+          entryMonth={selectedVoucherMonth}
           bankBalanceNu={totals.bankMovement}
           cashInHandNu={totals.cashInHand}
           onClose={() => setEntryOpen(false)}
