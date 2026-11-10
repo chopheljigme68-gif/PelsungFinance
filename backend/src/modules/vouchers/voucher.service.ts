@@ -15,6 +15,7 @@ import {
   type VoucherStatus,
   type VoucherType,
 } from "../../domain/vouchers.js";
+import { currentBhutanDate, fiscalYearEndDate, fiscalYearStartDate } from "../../domain/fiscal-year.js";
 import { BANK_LEDGER_CODE, findLedger } from "../../domain/reference.js";
 import { audit } from "../../lib/audit.js";
 import { EmailDeliveryError, sendPayrollPayslipEmail } from "../../lib/email.js";
@@ -251,12 +252,27 @@ function describeVoucher(input: CreateVoucherInput, prepared: PreparedVoucher): 
   return `${input.voucherType}${receiptCategory ? ` (${receiptCategory})` : ""} voucher via ${ledger.code} ${ledger.name}: ${budgetLines.length} budget ${isRefund ? "refund line(s)" : "allocation(s)"}, gross Nu. ${amountNu}, TDS Nu. ${tdsNu}, advance recovery Nu. ${advanceRecoveryNu}, net Nu. ${netPaymentNu}`;
 }
 
+/**
+ * A voucher records something that has already happened, so its date must lie
+ * inside the fiscal year and may not be later than today (Bhutan time). Any
+ * earlier month is allowed as long as it has not been closed.
+ */
+function assertVoucherDate(fiscalYear: string, transactionDate: string): void {
+  if (transactionDate < fiscalYearStartDate(fiscalYear) || transactionDate > fiscalYearEndDate(fiscalYear)) {
+    throw badRequest(`The transaction date must fall within FY ${fiscalYear}.`);
+  }
+  if (transactionDate > currentBhutanDate()) {
+    throw badRequest("The transaction date cannot be in the future. Choose today or an earlier date.");
+  }
+}
+
 export async function createVoucher(
   user: SessionUser,
   fiscalYear: string,
   input: CreateVoucherInput,
 ): Promise<{ voucherNumber: string }> {
   const prepared = await prepareVoucherPosting(user, input);
+  assertVoucherDate(fiscalYear, input.transactionDate);
 
   // A closed accounting month is locked to new postings.
   if (await isAccountingMonthClosed(fiscalYear, input.transactionDate.slice(0, 7))) {
@@ -354,6 +370,7 @@ export async function updateVoucher(
     }
 
     const prepared = await prepareVoucherPosting(user, input);
+    assertVoucherDate(fiscalYear, input.transactionDate);
 
     const oldMonth = existing.transactionDate.slice(0, 7);
     const newMonth = input.transactionDate.slice(0, 7);

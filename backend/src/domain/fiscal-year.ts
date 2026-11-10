@@ -53,6 +53,18 @@ export function monthEndDate(payMonth: string): string {
   return `${payMonth}-${String(day).padStart(2, "0")}`;
 }
 
+/** Today (YYYY-MM-DD) in Bhutan time (Asia/Thimphu, UTC+6), independent of the server's time zone. */
+export function currentBhutanDate(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Thimphu",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const value = (type: "year" | "month" | "day") => parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
 /** The current calendar month (YYYY-MM) in Bhutan time (Asia/Thimphu, UTC+6). */
 export function currentBhutanMonth(): string {
   const parts = new Intl.DateTimeFormat("en-GB", {

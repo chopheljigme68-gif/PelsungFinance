@@ -24,18 +24,28 @@ import { useApp } from "@/providers/app-provider";
 import type { Activity, MonthClosure, TpnRegistration, Voucher } from "@/types";
 
 /**
- * Default voucher date follows the month the register is showing (the active
- * accounting month unless the user picked another). When that month is the
- * current calendar month, today's date is used; otherwise the 1st of the month.
+ * A voucher can be dated anywhere from the start of the fiscal year up to
+ * today (Bhutan time), never in the future. The server applies the same rule.
+ */
+export const latestVoucherDate = (fiscalYear: string) => {
+  const today = currentBhutanDate();
+  const end = fiscalYearEndDate(fiscalYear);
+  return today < end ? today : end;
+};
+
+/**
+ * Default voucher date follows the month the register is showing. In the
+ * current month that is today; in an earlier month, the 1st of that month.
  */
 const defaultTransactionDate = (fiscalYear: string, entryMonth: string) => {
   const today = currentBhutanDate();
-  const withinFy = today >= fiscalYearStartDate(fiscalYear) && today <= fiscalYearEndDate(fiscalYear);
-  if (today.slice(0, 7) === entryMonth && withinFy) return today;
-  const firstOfActive = `${entryMonth}-01`;
-  if (firstOfActive < fiscalYearStartDate(fiscalYear)) return fiscalYearStartDate(fiscalYear);
-  if (firstOfActive > fiscalYearEndDate(fiscalYear)) return fiscalYearEndDate(fiscalYear);
-  return firstOfActive;
+  const earliest = fiscalYearStartDate(fiscalYear);
+  const latest = latestVoucherDate(fiscalYear);
+  if (today.slice(0, 7) === entryMonth && today >= earliest && today <= latest) return today;
+  const firstOfMonth = `${entryMonth}-01`;
+  if (firstOfMonth < earliest) return earliest;
+  if (firstOfMonth > latest) return latest;
+  return firstOfMonth;
 };
 
 type BudgetLineDraft = { key: number; activityId: number; amount: string };
@@ -117,6 +127,9 @@ export function VoucherModal({
   // Moving an edited voucher into another month gives it that month's next number.
   const willRenumber = Boolean(original && original.transactionDate.slice(0, 7) !== date.slice(0, 7));
   const dateInClosedMonth = closedMonths.has(date.slice(0, 7));
+  const earliestDate = fiscalYearStartDate(fiscalYear);
+  const latestDate = latestVoucherDate(fiscalYear);
+  const dateInFuture = date > latestDate;
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -215,6 +228,14 @@ export function VoucherModal({
     event.preventDefault();
     setError("");
 
+    if (date < earliestDate || dateInFuture) {
+      setError(
+        dateInFuture
+          ? "The transaction date cannot be in the future. Choose today or an earlier date."
+          : `The transaction date must fall within ${fiscalYearLabel(fiscalYear)}.`,
+      );
+      return;
+    }
     if (dateInClosedMonth) {
       setError(`${payMonthLabel(date.slice(0, 7))} is closed. Choose a date in a month that is still open.`);
       return;
@@ -416,8 +437,8 @@ export function VoucherModal({
             Transaction date
             <input
               type="date"
-              min={fiscalYearStartDate(fiscalYear)}
-              max={fiscalYearEndDate(fiscalYear)}
+              min={earliestDate}
+              max={latestDate}
               value={date}
               onChange={(event) => {
                 setDate(event.target.value);
@@ -426,6 +447,7 @@ export function VoucherModal({
               required
             />
             {dateInClosedMonth && <small className="field-warning">This month is closed to new vouchers.</small>}
+            {dateInFuture && <small className="field-warning">Future dates are not allowed.</small>}
           </label>
           {isReceipt && (
             <label>

@@ -6,7 +6,7 @@ import { VoucherModal } from "@/components/vouchers/voucher-modal";
 import { VoucherPrintModal } from "@/components/vouchers/voucher-print-modal";
 import { VoucherTable, voucherDisplayType } from "@/components/vouchers/voucher-parts";
 import { api } from "@/lib/api";
-import { fiscalYearLabel, fiscalYearMonthOptions, money, payMonthLabel } from "@/lib/format";
+import { currentBhutanMonth, fiscalYearLabel, fiscalYearMonthOptions, money, payMonthLabel } from "@/lib/format";
 import { activeAccountingMonth, closedAccountingMonths } from "@/lib/reconciliation";
 import { workspaceTotals } from "@/lib/totals";
 import { isVoucherEditableBy, voucherBankEffectNu } from "@/lib/vouchers";
@@ -33,6 +33,8 @@ function VoucherRegister({ data }: { data: AccountingData }) {
   // closed; a closed month stays open for review only.
   const closedMonths = useMemo(() => closedAccountingMonths(data.monthClosures), [data.monthClosures]);
   const selectedMonthClosed = closedMonths.has(selectedVoucherMonth);
+  // Vouchers record what has already happened, so a month that hasn't started yet takes no entries.
+  const selectedMonthInFuture = selectedVoucherMonth > currentBhutanMonth();
   const [entryOpen, setEntryOpen] = useState(false);
   const [editingVoucher, setEditingVoucher] = useState<Voucher | null>(null);
   const [printVoucher, setPrintVoucher] = useState<Voucher | null>(null);
@@ -113,7 +115,9 @@ function VoucherRegister({ data }: { data: AccountingData }) {
           <small>
             {selectedMonthClosed
               ? `${payMonthLabel(selectedVoucherMonth)} is closed. New vouchers can't be added to a closed month.`
-              : "Pick any open month to view its vouchers or add new ones."}
+              : selectedMonthInFuture
+                ? `${payMonthLabel(selectedVoucherMonth)} hasn't started yet. Vouchers can be dated up to today.`
+                : "Pick any open month, past or current, to view its vouchers or add new ones."}
           </small>
         </label>
       </section>
@@ -128,7 +132,7 @@ function VoucherRegister({ data }: { data: AccountingData }) {
             <span className="fy-chip">
               {visibleVouchers.length} VOUCHER{visibleVouchers.length === 1 ? "" : "S"}
             </span>
-            {canCreate && !selectedMonthClosed && (
+            {canCreate && !selectedMonthClosed && !selectedMonthInFuture && (
               <button className="primary-button" onClick={() => setEntryOpen(true)}>
                 ＋ Create voucher
               </button>
