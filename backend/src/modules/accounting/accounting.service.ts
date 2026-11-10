@@ -8,6 +8,7 @@ import { can, publicUser, type SessionUser } from "../auth/auth.service.js";
 import type {
   AccountingData,
   Activity,
+  DeletedActivity,
   BankReconciliation,
   BankReconciliationItem,
   BudgetReappropriation,
@@ -86,6 +87,7 @@ export async function loadAccountingData(
     bankReconciliationItems,
     monthClosures,
     tpnRegistrations,
+    deletedActivities,
   ] = await Promise.all([
     selectActivities(executor, fiscalYear),
     selectVouchers(executor, fiscalYear),
@@ -108,6 +110,9 @@ export async function loadAccountingData(
       : Promise.resolve([]),
     canViewAccounts ? optionalList("monthClosures", selectMonthClosures(executor, fiscalYear)) : Promise.resolve([]),
     canViewAccounts ? optionalList("tpnRegistrations", selectTpnRegistrations(executor)) : Promise.resolve([]),
+    can(user, "manage_budget")
+      ? optionalList("deletedActivities", selectDeletedActivities(executor, fiscalYear))
+      : Promise.resolve([]),
   ]);
 
   const fiscalYears = [...new Set([...BASE_FISCAL_YEARS, fiscalYear, ...storedFiscalYears])].sort((a, b) =>
@@ -141,6 +146,7 @@ export async function loadAccountingData(
 
   return {
     activities,
+    deletedActivities,
     vouchers,
     employees,
     departments,
@@ -185,10 +191,34 @@ async function selectActivities(executor: DbExecutor, fiscalYear: string): Promi
     LEFT JOIN voucher_budget_lines line ON line.activity_id = a.id
     LEFT JOIN vouchers v ON v.id = line.voucher_id
     WHERE a.fiscal_year = ${fiscalYear}
+      AND a.deleted_at IS NULL
     GROUP BY a.id
     ORDER BY a.id
   `);
   return rows as unknown as Activity[];
+}
+
+/** Soft-deleted activities of the year, newest first, for the restore list. */
+async function selectDeletedActivities(executor: DbExecutor, fiscalYear: string): Promise<DeletedActivity[]> {
+  const rows = await executor.execute<DeletedActivity>(raw`
+    SELECT
+      a.id,
+      a.category,
+      a.obc,
+      a.activity,
+      a.budget_type    AS "budgetType",
+      a.approved_nu    AS "approvedNu",
+      a.delete_reason  AS "deleteReason",
+      a.deleted_at     AS "deletedAt",
+      u.display_name   AS "deletedByName"
+    FROM budget_activities a
+    LEFT JOIN users u ON u.id = a.deleted_by
+    WHERE a.fiscal_year = ${fiscalYear}
+      AND a.deleted_at IS NOT NULL
+    ORDER BY a.deleted_at DESC
+    LIMIT 50
+  `);
+  return rows as unknown as DeletedActivity[];
 }
 
 type VoucherRow = Omit<Voucher, "budgetLines">;
@@ -713,6 +743,7 @@ export async function loadActivityBalances(
       ), 0) AS "availableNu"
     FROM budget_activities a
     WHERE a.fiscal_year = ${fiscalYear}
+      AND a.deleted_at IS NULL
       AND a.id IN (${idList})
     ${forUpdate ? raw`FOR UPDATE OF a` : raw``}
   `);

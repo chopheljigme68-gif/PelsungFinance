@@ -3,14 +3,16 @@
 import { useState } from "react";
 import {
   BudgetActivityModal,
+  DeleteBudgetActivityModal,
   BudgetReappropriationModal,
   SupplementaryBudgetModal,
 } from "@/components/budget/budget-modals";
 import { RouteGuard } from "@/components/shell/route-guard";
 import { Empty, ModuleHero, PlusIcon } from "@/components/ui/primitives";
 import { fiscalYearLabel, money, timestamp } from "@/lib/format";
+import { api } from "@/lib/api";
 import { useApp } from "@/providers/app-provider";
-import type { AccountingData } from "@/types";
+import type { AccountingData, Activity, DeletedActivity } from "@/types";
 
 export default function BudgetPage() {
   return <RouteGuard permission="view_budget">{(data) => <BudgetActivities data={data} />}</RouteGuard>;
@@ -21,6 +23,9 @@ type OpenModal = "activity" | "reappropriation" | "supplementary" | null;
 function BudgetActivities({ data }: { data: AccountingData }) {
   const { can, fiscalYear, changeFiscalYear } = useApp();
   const [modal, setModal] = useState<OpenModal>(null);
+  const [deleting, setDeleting] = useState<Activity | null>(null);
+  const canManage = can("manage_budget");
+  const deletedActivities = data.deletedActivities ?? [];
 
   const { activities, budgetReappropriations: reappropriations, supplementaryBudgets, fiscalYears } = data;
   const approved = activities.reduce((sum, item) => sum + Number(item.approvedNu), 0);
@@ -138,6 +143,7 @@ function BudgetActivities({ data }: { data: AccountingData }) {
                 <th className="amount-cell">Approved</th>
                 <th className="amount-cell">Committed</th>
                 <th className="amount-cell">Available</th>
+                {canManage && <th className="activity-actions-cell" aria-label="Actions" />}
               </tr>
             </thead>
             <tbody>
@@ -160,6 +166,18 @@ function BudgetActivities({ data }: { data: AccountingData }) {
                   <td className="amount-cell">
                     <strong>{money.format(item.approvedNu - item.committedNu)}</strong>
                   </td>
+                  {canManage && (
+                    <td className="activity-actions-cell">
+                      <button
+                        type="button"
+                        className="delete-user-button"
+                        onClick={() => setDeleting(item)}
+                        aria-label={`Delete ${item.obc} ${item.activity}`}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -171,6 +189,38 @@ function BudgetActivities({ data }: { data: AccountingData }) {
           )}
         </div>
       </section>
+
+      {canManage && deletedActivities.length > 0 && (
+        <section className="panel register-panel deleted-activities">
+          <div className="register-toolbar">
+            <div>
+              <h3>Recently deleted activities</h3>
+              <p>Deleted by mistake? Restore an activity to put it back in the register and dashboard.</p>
+            </div>
+            <span className="fy-chip">{deletedActivities.length} DELETED</span>
+          </div>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Deleted</th>
+                  <th>Activity</th>
+                  <th>Programme</th>
+                  <th className="amount-cell">Approved</th>
+                  <th>Reason</th>
+                  <th>Deleted by</th>
+                  <th className="activity-actions-cell" aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {deletedActivities.map((item) => (
+                  <DeletedActivityRow key={item.id} item={item} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section className="panel register-panel reappropriation-history">
         <div className="register-toolbar">
@@ -272,6 +322,35 @@ function BudgetActivities({ data }: { data: AccountingData }) {
         <BudgetReappropriationModal activities={activities} onClose={() => setModal(null)} />
       )}
       {modal === "supplementary" && <SupplementaryBudgetModal activities={activities} onClose={() => setModal(null)} />}
+      {deleting && <DeleteBudgetActivityModal activity={deleting} onClose={() => setDeleting(null)} />}
     </>
+  );
+}
+
+function DeletedActivityRow({ item }: { item: DeletedActivity }) {
+  const { fiscalYear, run } = useApp();
+  const [busy, setBusy] = useState(false);
+  const restore = async () => {
+    setBusy(true);
+    await run(() => api.restoreBudgetActivity(item.id, fiscalYear), `${item.activity} was restored.`);
+    setBusy(false);
+  };
+  return (
+    <tr className="deleted-user-row">
+      <td>{timestamp(item.deletedAt)}</td>
+      <td>
+        <strong className="obc-code">{item.obc}</strong>
+        <small>{item.activity}</small>
+      </td>
+      <td>{item.category}</td>
+      <td className="amount-cell">{money.format(item.approvedNu)}</td>
+      <td>{item.deleteReason ?? "—"}</td>
+      <td>{item.deletedByName ?? "Admin"}</td>
+      <td className="activity-actions-cell">
+        <button type="button" className="restore-button" disabled={busy} onClick={() => void restore()}>
+          {busy ? "Restoring…" : "↺ Restore"}
+        </button>
+      </td>
+    </tr>
   );
 }

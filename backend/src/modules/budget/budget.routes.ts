@@ -1,10 +1,16 @@
 import { Router } from "express";
 import { z } from "zod";
-import { asyncHandler, validateBody } from "../../lib/http.js";
+import { asyncHandler, validateBody, validateParams } from "../../lib/http.js";
 import { moneyPositive } from "../../lib/money.js";
 import { currentUser, requirePermission } from "../../middleware/auth.js";
 import { requestedFiscalYear, respondWithSnapshot } from "../accounting/accounting.controller.js";
-import { addBudgetActivity, addSupplementaryBudget, reappropriateBudget } from "./budget.service.js";
+import {
+  addBudgetActivity,
+  addSupplementaryBudget,
+  deleteBudgetActivity,
+  reappropriateBudget,
+  restoreBudgetActivity,
+} from "./budget.service.js";
 
 const money = moneyPositive;
 
@@ -39,6 +45,13 @@ const supplementarySchema = z.object({
   reason: z.string().trim().min(5, "Provide a reason of at least 5 characters.").max(500),
 });
 
+const activityIdParams = z.object({ id: z.coerce.number().int().positive() });
+
+const deleteActivitySchema = z.object({
+  fiscalYear: z.string().optional(),
+  reason: z.string().trim().min(5, "Provide a reason of at least 5 characters.").max(500),
+});
+
 export const budgetRouter = Router();
 
 budgetRouter.post(
@@ -68,5 +81,30 @@ budgetRouter.post(
   asyncHandler(async (req, res) => {
     await addSupplementaryBudget(currentUser(req), requestedFiscalYear(req), req.body);
     await respondWithSnapshot(req, res, {}, 201);
+  }),
+);
+budgetRouter.delete(
+  "/activities/:id",
+  requirePermission("manage_budget"),
+  validateParams(activityIdParams),
+  validateBody(deleteActivitySchema),
+  asyncHandler(async (req, res) => {
+    const { actionNotice } = await deleteBudgetActivity(
+      currentUser(req),
+      requestedFiscalYear(req),
+      Number(req.params.id),
+      req.body.reason,
+    );
+    await respondWithSnapshot(req, res, { actionNotice });
+  }),
+);
+
+budgetRouter.post(
+  "/activities/:id/restore",
+  requirePermission("manage_budget"),
+  validateParams(activityIdParams),
+  asyncHandler(async (req, res) => {
+    const { actionNotice } = await restoreBudgetActivity(currentUser(req), requestedFiscalYear(req), Number(req.params.id));
+    await respondWithSnapshot(req, res, { actionNotice });
   }),
 );

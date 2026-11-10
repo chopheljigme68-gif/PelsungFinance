@@ -50,6 +50,13 @@
       "when": 1788700000000,
       "tag": "0006_password_reset_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788800000000,
+      "tag": "0007_budget_activity_soft_delete",
+      "breakpoints": true
     }
   ]
 }

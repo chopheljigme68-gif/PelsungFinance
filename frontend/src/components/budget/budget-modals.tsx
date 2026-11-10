@@ -444,3 +444,116 @@ export function SupplementaryBudgetModal({ activities, onClose }: { activities: 
     </ModalShell>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Delete budget activity                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Three guards against a mistaken delete: the user must type the OBC code,
+ * give a reason (kept in the audit log), and the delete is soft — the activity
+ * can be restored from "Recently deleted activities". The server additionally
+ * refuses to delete an activity that vouchers, pay bills or transfers use.
+ */
+export function DeleteBudgetActivityModal({ activity, onClose }: { activity: Activity; onClose: () => void }) {
+  const { fiscalYear, run } = useApp();
+  const [confirmText, setConfirmText] = useState("");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const inUse = Number(activity.committedNu) !== 0 || Number(activity.utilizedNu) !== 0;
+  const confirmed = confirmText.trim().toUpperCase() === activity.obc.toUpperCase();
+  const canSubmit = confirmed && reason.trim().length >= 5 && !saving && !inUse;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!canSubmit) return;
+    setSaving(true);
+    setError("");
+    const deleted = await run(
+      () => api.deleteBudgetActivity(activity.id, { fiscalYear, reason: reason.trim() }),
+      `${activity.activity} was deleted.`,
+      {
+        onError: (apiError) => {
+          setError(apiError.message);
+        },
+      },
+    );
+    setSaving(false);
+    if (deleted) onClose();
+  };
+
+  return (
+    <ModalShell onClose={onClose}>
+      <form className="modal-card" onSubmit={submit}>
+        <header>
+          <div>
+            <span className="eyebrow dark">Budget administration · {fiscalYearLabel(fiscalYear)}</span>
+            <h2>Delete budget activity?</h2>
+            <p>The activity will be removed from the register and dashboard. You can restore it afterwards.</p>
+          </div>
+          <button type="button" aria-label="Close" onClick={onClose}>
+            ×
+          </button>
+        </header>
+        <div className="form-grid">
+          <div className="wide delete-activity-summary">
+            <span className="obc-code">{activity.obc}</span>
+            <strong>{activity.activity}</strong>
+            <small>
+              {activity.category} · {activity.budgetType} · Approved {money.format(activity.approvedNu)}
+            </small>
+          </div>
+
+          {inUse ? (
+            <div className="form-error wide" role="alert">
+              This activity already has approved or paid vouchers ({money.format(activity.committedNu)} committed), so it
+              cannot be deleted. Reverse those vouchers or re-appropriate its balance to another activity instead.
+            </div>
+          ) : (
+            <>
+              <label className="wide">
+                Reason for deletion
+                <textarea
+                  maxLength={500}
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="e.g. Entered in error — duplicate of the Secretariat activity"
+                  required
+                  autoFocus
+                />
+              </label>
+              <label className="wide">
+                Type <b>{activity.obc}</b> to confirm
+                <input
+                  value={confirmText}
+                  onChange={(event) => setConfirmText(event.target.value)}
+                  placeholder={activity.obc}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+            </>
+          )}
+
+          {error && (
+            <div className="form-error wide" role="alert">
+              {error}
+            </div>
+          )}
+        </div>
+        <footer>
+          <button type="button" className="secondary-button" onClick={onClose}>
+            Cancel
+          </button>
+          {!inUse && (
+            <button className="danger-button" disabled={!canSubmit}>
+              {saving ? "Deleting…" : "Delete activity"}
+            </button>
+          )}
+        </footer>
+      </form>
+    </ModalShell>
+  );
+}

@@ -107,6 +107,7 @@ export const api = {
       bankReconciliationItems: data.bankReconciliationItems ?? [],
       monthClosures: data.monthClosures ?? [],
       tpnRegistrations: data.tpnRegistrations ?? [],
+      deletedActivities: data.deletedActivities ?? [],
     } satisfies AccountingData;
   },
 
@@ -117,6 +118,11 @@ export const api = {
     request<AccountingData>("/api/budget/reappropriations", { method: "POST", body }),
   addSupplementaryBudget: (body: Record<string, unknown>) =>
     request<AccountingData>("/api/budget/supplementary", { method: "POST", body }),
+  /** Soft delete — the activity can be restored from "Recently deleted activities". */
+  deleteBudgetActivity: (activityId: number, body: { fiscalYear: string; reason: string }) =>
+    request<AccountingData>(`/api/budget/activities/${activityId}`, { method: "DELETE", body }),
+  restoreBudgetActivity: (activityId: number, fiscalYear: string) =>
+    request<AccountingData>(`/api/budget/activities/${activityId}/restore`, { method: "POST", body: { fiscalYear } }),
 
   /* Vouchers --------------------------------------------------------------- */
   createVoucher: (body: Record<string, unknown>) => request<AccountingData>("/api/vouchers", { method: "POST", body }),

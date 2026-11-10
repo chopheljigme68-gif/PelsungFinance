@@ -59,6 +59,18 @@ export type Activity = {
   brief: string;
 };
 
+export type DeletedActivity = {
+  id: number;
+  category: string;
+  obc: string;
+  activity: string;
+  budgetType: "Current" | "Capital";
+  approvedNu: number;
+  deleteReason: string | null;
+  deletedAt: string;
+  deletedByName: string | null;
+};
+
 export type BudgetReappropriation = {
   id: number;
   fiscalYear: string;
@@ -365,6 +377,7 @@ export type TpnRegistration = {
 
 export type AccountingData = {
   activities: Activity[];
+  deletedActivities: DeletedActivity[];
   vouchers: Voucher[];
   employees: Employee[];
   departments: Department[];

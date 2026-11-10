@@ -131,9 +131,14 @@ export const budgetActivities = pgTable(
     brief: text("brief").notNull(),
     createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // Soft delete: a deleted activity is hidden everywhere but can be restored.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedBy: integer("deleted_by").references(() => users.id, { onDelete: "set null" }),
+    deleteReason: text("delete_reason"),
   },
   (table) => [
     index("budget_activities_fiscal_year_idx").on(table.fiscalYear),
+    index("budget_activities_live_idx").on(table.fiscalYear).where(sql`${table.deletedAt} IS NULL`),
     // Deliberately not unique: the approved budget carries the same OBC and
     // activity title under different programmes (for example "01.01 Pay and
     // Allowances" for both the Secretariat and the Innovation Lab). New manual

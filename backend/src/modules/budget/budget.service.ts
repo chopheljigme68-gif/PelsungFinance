@@ -1,5 +1,5 @@
-import { and, eq, sql as raw } from "drizzle-orm";
-import { db } from "../../db/client.js";
+import { and, eq, isNotNull, isNull, sql as raw } from "drizzle-orm";
+import { db, type DbExecutor } from "../../db/client.js";
 import { budgetActivities, budgetReappropriations, supplementaryBudgets } from "../../db/schema.js";
 import { MAX_AMOUNT_NU } from "../../domain/vouchers.js";
 import { audit } from "../../lib/audit.js";
@@ -37,6 +37,7 @@ export async function addBudgetActivity(
         eq(budgetActivities.obc, obc),
         raw`lower(${budgetActivities.activity}) = lower(${input.activity})`,
         raw`lower(${budgetActivities.category}) = lower(${input.category})`,
+        isNull(budgetActivities.deletedAt),
       ),
     )
     .limit(1);
@@ -160,7 +161,13 @@ export async function addSupplementaryBudget(
         approvedNu: budgetActivities.approvedNu,
       })
       .from(budgetActivities)
-      .where(and(eq(budgetActivities.id, input.activityId), eq(budgetActivities.fiscalYear, fiscalYear)))
+      .where(
+        and(
+          eq(budgetActivities.id, input.activityId),
+          eq(budgetActivities.fiscalYear, fiscalYear),
+          isNull(budgetActivities.deletedAt),
+        ),
+      )
       .for("update")
       .limit(1);
 
@@ -200,8 +207,142 @@ export async function requireActivity(fiscalYear: string, activityId: number) {
   const [activity] = await db
     .select()
     .from(budgetActivities)
-    .where(and(eq(budgetActivities.id, activityId), eq(budgetActivities.fiscalYear, fiscalYear)))
+    .where(
+      and(
+        eq(budgetActivities.id, activityId),
+        eq(budgetActivities.fiscalYear, fiscalYear),
+        isNull(budgetActivities.deletedAt),
+      ),
+    )
     .limit(1);
   if (!activity) throw notFound("The selected budget activity was not found in this financial year.");
   return activity;
+}
+
+/**
+ * Counts every record that depends on an activity. An activity that money has
+ * already moved through must never vanish from the books — the user reverses
+ * the vouchers or re-appropriates the balance instead.
+ */
+async function activityUsage(tx: DbExecutor, activityId: number) {
+  const rows = await tx.execute<{ vouchers: number; payroll: number; transfers: number; supplements: number }>(raw`
+    SELECT
+      (SELECT COUNT(DISTINCT v.id)::int FROM vouchers v
+         LEFT JOIN voucher_budget_lines line ON line.voucher_id = v.id
+        WHERE v.activity_id = ${activityId} OR line.activity_id = ${activityId}) AS "vouchers",
+      (SELECT COUNT(*)::int FROM payroll_runs WHERE budget_activity_id = ${activityId}) AS "payroll",
+      (SELECT COUNT(*)::int FROM budget_reappropriations
+        WHERE source_activity_id = ${activityId} OR destination_activity_id = ${activityId}) AS "transfers",
+      (SELECT COUNT(*)::int FROM supplementary_budgets WHERE activity_id = ${activityId}) AS "supplements"
+  `);
+  return (rows as unknown as { vouchers: number; payroll: number; transfers: number; supplements: number }[])[0];
+}
+
+export async function deleteBudgetActivity(
+  user: SessionUser,
+  fiscalYear: string,
+  activityId: number,
+  reason: string,
+): Promise<{ actionNotice: string }> {
+  return db.transaction(async (tx) => {
+    const [activity] = await tx
+      .select()
+      .from(budgetActivities)
+      .where(
+        and(
+          eq(budgetActivities.id, activityId),
+          eq(budgetActivities.fiscalYear, fiscalYear),
+          isNull(budgetActivities.deletedAt),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!activity) throw notFound("The budget activity was not found or has already been deleted.");
+
+    const usage = await activityUsage(tx, activityId);
+    const blockers = [
+      usage.vouchers && `${usage.vouchers} voucher${usage.vouchers === 1 ? "" : "s"}`,
+      usage.payroll && `${usage.payroll} pay bill${usage.payroll === 1 ? "" : "s"}`,
+      usage.transfers && `${usage.transfers} re-appropriation${usage.transfers === 1 ? "" : "s"}`,
+      usage.supplements && `${usage.supplements} supplementary budget${usage.supplements === 1 ? "" : "s"}`,
+    ].filter(Boolean);
+    if (blockers.length) {
+      throw conflict(
+        `${activity.obc} · ${activity.activity} cannot be deleted because it is used by ${blockers.join(", ")}. ` +
+          "Reverse those vouchers or re-appropriate its balance to another activity instead.",
+      );
+    }
+
+    await tx
+      .update(budgetActivities)
+      .set({ deletedAt: new Date(), deletedBy: user.id, deleteReason: reason })
+      .where(eq(budgetActivities.id, activityId));
+
+    await audit(
+      user.id,
+      "budget_activity_deleted",
+      "budget_activity",
+      activityId,
+      `${fiscalYear} - ${activity.obc} - ${activity.activity} - Nu. ${activity.approvedNu} - ${reason}`,
+      tx,
+    );
+
+    return {
+      actionNotice: `${activity.obc} · ${activity.activity} was deleted. You can restore it from "Recently deleted activities".`,
+    };
+  });
+}
+
+export async function restoreBudgetActivity(
+  user: SessionUser,
+  fiscalYear: string,
+  activityId: number,
+): Promise<{ actionNotice: string }> {
+  return db.transaction(async (tx) => {
+    const [activity] = await tx
+      .select()
+      .from(budgetActivities)
+      .where(
+        and(
+          eq(budgetActivities.id, activityId),
+          eq(budgetActivities.fiscalYear, fiscalYear),
+          isNotNull(budgetActivities.deletedAt),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!activity) throw notFound("The deleted budget activity was not found.");
+
+    // Someone may have re-added the same activity after it was deleted.
+    const [clash] = await tx
+      .select({ id: budgetActivities.id })
+      .from(budgetActivities)
+      .where(
+        and(
+          eq(budgetActivities.fiscalYear, fiscalYear),
+          eq(budgetActivities.obc, activity.obc),
+          raw`lower(${budgetActivities.activity}) = lower(${activity.activity})`,
+          raw`lower(${budgetActivities.category}) = lower(${activity.category})`,
+          isNull(budgetActivities.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (clash) throw conflict("An active activity with the same OBC and name already exists in this programme.");
+
+    await tx
+      .update(budgetActivities)
+      .set({ deletedAt: null, deletedBy: null, deleteReason: null })
+      .where(eq(budgetActivities.id, activityId));
+
+    await audit(
+      user.id,
+      "budget_activity_restored",
+      "budget_activity",
+      activityId,
+      `${fiscalYear} - ${activity.obc} - ${activity.activity} - Nu. ${activity.approvedNu}`,
+      tx,
+    );
+
+    return { actionNotice: `${activity.obc} · ${activity.activity} was restored to the budget register.` };
+  });
 }
